@@ -1,6 +1,0 @@
-2025-03-07 15:34:13,265 - elysium - INFO - Starting Elysium Trading Framework
-2025-03-07 15:34:13,266 - elysium.config - INFO - Loaded configuration from elysium_config.json
-2025-03-07 15:34:16,507 - elysium.exchange - INFO - Exchange manager initialized for account: 0xb92e5A1363Da1030B10f02378ea9FBcA7bEC1973
-2025-03-07 15:34:16,659 - elysium.position - INFO - Position manager initialized
-2025-03-07 15:34:16,661 - elysium.orders - INFO - Order callbacks set up successfully
-2025-03-07 15:34:16,662 - elysium.strategy - INFO - Discovered 2 strategies: ['basic_market_making', 'market_order_making']

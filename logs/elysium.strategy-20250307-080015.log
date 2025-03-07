@@ -1,5 +1,0 @@
-2025-03-07 08:00:15,521 - elysium.strategy - WARNING - Market making strategies package not found
-2025-03-07 08:00:15,525 - elysium.strategy - WARNING - Arbitrage strategies package not found
-2025-03-07 08:00:15,531 - elysium.strategy - WARNING - Trend following strategies package not found
-2025-03-07 08:00:15,531 - elysium.strategy - INFO - Discovered 0 strategies: []
-2025-03-07 08:00:15,531 - elysium.strategy - ERROR - Strategy 'basic_market_making' not found

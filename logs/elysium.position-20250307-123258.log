@@ -1,4 +1,0 @@
-2025-03-07 12:32:58,284 - elysium.position - INFO - Position manager initialized
-2025-03-07 12:36:43,233 - elysium.position - ERROR - Error refreshing positions: (502, '<html>\r\n<head><title>502 Bad Gateway</title></head>\r\n<body>\r\n<center><h1>502 Bad Gateway</h1></center>\r\n<hr><center>nginx/1.26.2</center>\r\n</body>\r\n</html>\r\n')
-2025-03-07 12:36:53,394 - elysium.position - ERROR - Error refreshing positions: (502, '<html>\r\n<head><title>502 Bad Gateway</title></head>\r\n<body>\r\n<center><h1>502 Bad Gateway</h1></center>\r\n<hr><center>nginx/1.26.2</center>\r\n</body>\r\n</html>\r\n')
-2025-03-07 12:37:03,559 - elysium.position - ERROR - Error refreshing positions: (502, '<html>\r\n<head><title>502 Bad Gateway</title></head>\r\n<body>\r\n<center><h1>502 Bad Gateway</h1></center>\r\n<hr><center>nginx/1.26.2</center>\r\n</body>\r\n</html>\r\n')
