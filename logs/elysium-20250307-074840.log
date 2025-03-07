@@ -1,0 +1,10 @@
+2025-03-07 07:48:40,022 - elysium - INFO - Starting Elysium Trading Framework
+2025-03-07 07:48:40,022 - elysium - INFO - Saved configuration to config.json
+2025-03-07 07:48:40,023 - elysium - INFO - Loaded configuration from config.json
+2025-03-07 07:48:44,782 - elysium - ERROR - Error running Elysium: ExchangeManager.__init__() got an unexpected keyword argument 'wallet'
+Traceback (most recent call last):
+  File "/Users/ubaid/Elysium/elysium/main.py", line 104, in main
+    exchange = ExchangeManager(
+               ^^^^^^^^^^^^^^^^
+TypeError: ExchangeManager.__init__() got an unexpected keyword argument 'wallet'
+2025-03-07 07:48:44,784 - elysium - INFO - Exiting Elysium Trading Framework

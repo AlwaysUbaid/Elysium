@@ -1,0 +1,18 @@
+2025-03-07 08:00:11,223 - elysium - INFO - Starting Elysium Trading Framework
+2025-03-07 08:00:11,223 - elysium - INFO - Loaded configuration from config.json
+2025-03-07 08:00:11,223 - elysium - INFO - Loaded configuration from config.json
+2025-03-07 08:00:15,361 - elysium.exchange - INFO - Exchange manager initialized for account: 0xb92e5A1363Da1030B10f02378ea9FBcA7bEC1973
+2025-03-07 08:00:15,509 - elysium.position - ERROR - Error refreshing positions: (422, None, 'Failed to deserialize the JSON body into the target type', None, {'Server': 'nginx/1.26.2', 'Date': 'Fri, 07 Mar 2025 02:30:15 GMT', 'Content-Type': 'text/plain; charset=utf-8', 'Content-Length': '56', 'Connection': 'keep-alive', 'access-control-allow-origin': '*', 'vary': 'origin, access-control-request-method, access-control-request-headers', 'access-control-expose-headers': '*'})
+2025-03-07 08:00:15,510 - elysium.position - INFO - Position manager initialized
+2025-03-07 08:00:15,512 - elysium.orders - INFO - Order callbacks set up successfully
+2025-03-07 08:00:15,521 - elysium.strategy - WARNING - Market making strategies package not found
+2025-03-07 08:00:15,525 - elysium.strategy - WARNING - Arbitrage strategies package not found
+2025-03-07 08:00:15,531 - elysium.strategy - WARNING - Trend following strategies package not found
+2025-03-07 08:00:15,531 - elysium.strategy - INFO - Discovered 0 strategies: []
+2025-03-07 08:00:15,531 - elysium.strategy - ERROR - Strategy 'basic_market_making' not found
+2025-03-07 08:00:15,532 - elysium - ERROR - Failed to create strategy: basic_market_making. Exiting.
+2025-03-07 08:00:15,532 - elysium - INFO - Exiting Elysium Trading Framework
+2025-03-07 08:00:15,659 - elysium.position - ERROR - Error refreshing positions: (422, None, 'Failed to deserialize the JSON body into the target type', None, {'Server': 'nginx/1.26.2', 'Date': 'Fri, 07 Mar 2025 02:30:15 GMT', 'Content-Type': 'text/plain; charset=utf-8', 'Content-Length': '56', 'Connection': 'keep-alive', 'access-control-allow-origin': '*', 'vary': 'origin, access-control-request-method, access-control-request-headers', 'access-control-expose-headers': '*'})
+2025-03-07 08:00:25,825 - elysium.position - ERROR - Error refreshing positions: (422, None, 'Failed to deserialize the JSON body into the target type', None, {'Server': 'nginx/1.26.2', 'Date': 'Fri, 07 Mar 2025 02:30:25 GMT', 'Content-Type': 'text/plain; charset=utf-8', 'Content-Length': '56', 'Connection': 'keep-alive', 'access-control-allow-origin': '*', 'vary': 'origin, access-control-request-method, access-control-request-headers', 'access-control-expose-headers': '*'})
+2025-03-07 08:00:35,980 - elysium.position - ERROR - Error refreshing positions: (422, None, 'Failed to deserialize the JSON body into the target type', None, {'Server': 'nginx/1.26.2', 'Date': 'Fri, 07 Mar 2025 02:30:35 GMT', 'Content-Type': 'text/plain; charset=utf-8', 'Content-Length': '56', 'Connection': 'keep-alive', 'access-control-allow-origin': '*', 'vary': 'origin, access-control-request-method, access-control-request-headers', 'access-control-expose-headers': '*'})
+2025-03-07 08:00:46,138 - elysium.position - ERROR - Error refreshing positions: (422, None, 'Failed to deserialize the JSON body into the target type', None, {'Server': 'nginx/1.26.2', 'Date': 'Fri, 07 Mar 2025 02:30:46 GMT', 'Content-Type': 'text/plain; charset=utf-8', 'Content-Length': '56', 'Connection': 'keep-alive', 'access-control-allow-origin': '*', 'vary': 'origin, access-control-request-method, access-control-request-headers', 'access-control-expose-headers': '*'})

@@ -1,0 +1,44 @@
+{
+  "exchange": {
+    "use_testnet": true,
+    "base_url": null,
+    "account_address": "0xb92e5A1363Da1030B10f02378ea9FBcA7bEC1973",
+    "private_key": "0xf5e6970eedc56f66975beaf3c81d1fa97d01c747550137ddeeb096dce8d810ac"
+  },
+  "logging": {
+    "level": "INFO",
+    "log_to_console": true,
+    "log_to_file": true,
+    "log_dir": "logs"
+  },
+  "risk": {
+    "max_drawdown_pct": 0.1,
+    "max_position_sizes": {
+      "ETH": 1.0,
+      "BTC": 0.05,
+      "HWTR/USDC": 10000.0
+    },
+    "risk_per_trade": 0.01
+  },
+  "strategy": {
+    "name": "basic_market_making",
+    "params": {
+      "symbol": "@140",
+      "display_name": "HWTR/USDC",
+      "max_order_size": 6000.0,
+      "min_order_size": 1000.0,
+      "position_use_pct": 0.9,
+      "initial_offset": 0.0001,
+      "min_offset": 9e-05,
+      "offset_reduction": 1e-05,
+      "order_refresh_time": 10,
+      "max_active_orders": 4
+    }
+  },
+  "rebates": {
+    "enabled": true,
+    "default_builder": "",
+    "default_fee_rate": 1,
+    "strategy": "default"
+  }
+}

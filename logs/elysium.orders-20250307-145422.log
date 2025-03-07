@@ -1,0 +1,2 @@
+2025-03-07 14:54:22,011 - elysium.orders - INFO - Order callbacks set up successfully
+2025-03-07 14:57:15,914 - elysium.orders - INFO - Fill received: {'coin': '@5', 'px': '0.49047', 'sz': '27.0', 'side': 'B', 'time': 1741339635548, 'startPosition': '0.0', 'dir': 'Buy', 'closedPnl': '0.0', 'hash': '0x4e73528ad83c377f7aa4041453d41a01100053ea01b0ff9f80b1fa862c976757', 'oid': 25933099859, 'crossed': True, 'fee': '0.0', 'tid': 45337469426169, 'feeToken': 'KOGU'}
