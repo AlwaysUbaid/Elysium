@@ -8,7 +8,7 @@
 
 A professional command-line trading platform built for executing trades on the HyperLiquid exchange with simplicity and efficiency.
 
-![Elysium Terminal](elysium/poster.png)
+![Elysium Terminal](./poster.png)
 
 ## ✨ Features
 
