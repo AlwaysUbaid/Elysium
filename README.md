@@ -201,5 +201,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 <p align="center">
-  <sub>Built with ❤️ by your trading team</sub>
+  <sub>Built with ❤️ by $HWTR team</sub>
 </p>
