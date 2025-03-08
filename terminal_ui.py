@@ -2,6 +2,7 @@ import cmd
 import os
 import time
 import threading
+import json
 import queue
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
@@ -28,12 +29,25 @@ class ElysiumTerminalUI(cmd.Cmd):
 
     Useful Commands:
     - connect     Connect to exchange
-                    "connect mainnet" or "connect testnet"
+                "connect mainnet" or "connect testnet"
     - balance     See your exchange balances
+    - positions   Show your open positions
+
+    Spot Trading:
     - buy         Execute a market buy
     - sell        Execute a market sell
     - limit_buy   Place a limit buy order
     - limit_sell  Place a limit sell order
+
+    Perpetual Trading:
+    - perp_buy        Execute a perpetual market buy
+    - perp_sell       Execute a perpetual market sell
+    - perp_limit_buy  Place a perpetual limit buy order
+    - perp_limit_sell Place a perpetual limit sell order
+    - close_position  Close an entire perpetual position
+    - set_leverage    Set leverage for a symbol
+
+    Order Management:
     - cancel      Cancel specific order
     - cancel_all  Cancel all open orders
     - orders      List open orders
@@ -334,6 +348,228 @@ class ElysiumTerminalUI(cmd.Cmd):
                 
         except Exception as e:
             print(f"\nError placing limit sell order: {str(e)}")
+
+    # =================================Perp Trading==============================================
+
+    def do_perp_buy(self, arg):
+        """
+        Execute a perpetual market buy order
+        Usage: perp_buy <symbol> <size> [leverage] [slippage]
+        Example: perp_buy BTC 0.01 5 0.03
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            args = arg.split()
+            if len(args) < 2:
+                print("Invalid arguments. Usage: perp_buy <symbol> <size> [leverage] [slippage]")
+                return
+                
+            symbol = args[0]
+            size = float(args[1])
+            leverage = int(args[2]) if len(args) > 2 else 1
+            slippage = float(args[3]) if len(args) > 3 else 0.05
+            
+            print(f"\nExecuting perp market buy: {size} {symbol} with {leverage}x leverage (slippage: {slippage*100}%)")
+            result = self.order_handler.perp_market_buy(symbol, size, leverage, slippage)
+            
+            if result["status"] == "ok":
+                print("Perpetual market buy order executed successfully")
+                # Display the details
+                if "response" in result and "data" in result["response"] and "statuses" in result["response"]["data"]:
+                    for status in result["response"]["data"]["statuses"]:
+                        if "filled" in status:
+                            filled = status["filled"]
+                            print(f"Filled: {filled['totalSz']} @ {filled['avgPx']}")
+            else:
+                print(f"Perpetual market buy order failed: {result.get('message', 'Unknown error')}")
+                
+        except Exception as e:
+            print(f"\nError executing perpetual market buy: {str(e)}")
+
+    def do_perp_sell(self, arg):
+        """
+        Execute a perpetual market sell order
+        Usage: perp_sell <symbol> <size> [leverage] [slippage]
+        Example: perp_sell BTC 0.01 5 0.03
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            args = arg.split()
+            if len(args) < 2:
+                print("Invalid arguments. Usage: perp_sell <symbol> <size> [leverage] [slippage]")
+                return
+                
+            symbol = args[0]
+            size = float(args[1])
+            leverage = int(args[2]) if len(args) > 2 else 1
+            slippage = float(args[3]) if len(args) > 3 else 0.05
+            
+            print(f"\nExecuting perp market sell: {size} {symbol} with {leverage}x leverage (slippage: {slippage*100}%)")
+            result = self.order_handler.perp_market_sell(symbol, size, leverage, slippage)
+            
+            if result["status"] == "ok":
+                print("Perpetual market sell order executed successfully")
+                # Display the details
+                if "response" in result and "data" in result["response"] and "statuses" in result["response"]["data"]:
+                    for status in result["response"]["data"]["statuses"]:
+                        if "filled" in status:
+                            filled = status["filled"]
+                            print(f"Filled: {filled['totalSz']} @ {filled['avgPx']}")
+            else:
+                print(f"Perpetual market sell order failed: {result.get('message', 'Unknown error')}")
+                
+        except Exception as e:
+            print(f"\nError executing perpetual market sell: {str(e)}")
+
+    def do_perp_limit_buy(self, arg):
+        """
+        Place a perpetual limit buy order
+        Usage: perp_limit_buy <symbol> <size> <price> [leverage]
+        Example: perp_limit_buy BTC 0.01 50000 5
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            args = arg.split()
+            if len(args) < 3:
+                print("Invalid arguments. Usage: perp_limit_buy <symbol> <size> <price> [leverage]")
+                return
+                
+            symbol = args[0]
+            size = float(args[1])
+            price = float(args[2])
+            leverage = int(args[3]) if len(args) > 3 else 1
+            
+            print(f"\nPlacing perp limit buy order: {size} {symbol} @ {price} with {leverage}x leverage")
+            result = self.order_handler.perp_limit_buy(symbol, size, price, leverage)
+            
+            if result["status"] == "ok":
+                print("Perpetual limit buy order placed successfully")
+                # Display the order ID
+                if "response" in result and "data" in result["response"] and "statuses" in result["response"]["data"]:
+                    status = result["response"]["data"]["statuses"][0]
+                    if "resting" in status:
+                        oid = status["resting"]["oid"]
+                        print(f"Order ID: {oid}")
+            else:
+                print(f"Perpetual limit buy order failed: {result.get('message', 'Unknown error')}")
+                
+        except Exception as e:
+            print(f"\nError placing perpetual limit buy order: {str(e)}")
+
+    def do_perp_limit_sell(self, arg):
+        """
+        Place a perpetual limit sell order
+        Usage: perp_limit_sell <symbol> <size> <price> [leverage]
+        Example: perp_limit_sell BTC 0.01 60000 5
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            args = arg.split()
+            if len(args) < 3:
+                print("Invalid arguments. Usage: perp_limit_sell <symbol> <size> <price> [leverage]")
+                return
+                
+            symbol = args[0]
+            size = float(args[1])
+            price = float(args[2])
+            leverage = int(args[3]) if len(args) > 3 else 1
+            
+            print(f"\nPlacing perp limit sell order: {size} {symbol} @ {price} with {leverage}x leverage")
+            result = self.order_handler.perp_limit_sell(symbol, size, price, leverage)
+            
+            if result["status"] == "ok":
+                print("Perpetual limit sell order placed successfully")
+                # Display the order ID
+                if "response" in result and "data" in result["response"] and "statuses" in result["response"]["data"]:
+                    status = result["response"]["data"]["statuses"][0]
+                    if "resting" in status:
+                        oid = status["resting"]["oid"]
+                        print(f"Order ID: {oid}")
+            else:
+                print(f"Perpetual limit sell order failed: {result.get('message', 'Unknown error')}")
+                
+        except Exception as e:
+            print(f"\nError placing perpetual limit sell order: {str(e)}")
+
+    def do_close_position(self, arg):
+        """
+        Close an entire perpetual position
+        Usage: close_position <symbol> [slippage]
+        Example: close_position BTC 0.03
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            args = arg.split()
+            if len(args) < 1:
+                print("Invalid arguments. Usage: close_position <symbol> [slippage]")
+                return
+                
+            symbol = args[0]
+            slippage = float(args[1]) if len(args) > 1 else 0.05
+            
+            print(f"\nClosing position for {symbol} (slippage: {slippage*100}%)")
+            result = self.order_handler.close_position(symbol, slippage)
+            
+            if result["status"] == "ok":
+                print("Position closed successfully")
+                # Display the details
+                if "response" in result and "data" in result["response"] and "statuses" in result["response"]["data"]:
+                    for status in result["response"]["data"]["statuses"]:
+                        if "filled" in status:
+                            filled = status["filled"]
+                            print(f"Filled: {filled['totalSz']} @ {filled['avgPx']}")
+            else:
+                print(f"Position close failed: {result.get('message', 'Unknown error')}")
+                
+        except Exception as e:
+            print(f"\nError closing position: {str(e)}")
+
+    def do_set_leverage(self, arg):
+        """
+        Set leverage for a symbol
+        Usage: set_leverage <symbol> <leverage>
+        Example: set_leverage BTC 5
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            args = arg.split()
+            if len(args) < 2:
+                print("Invalid arguments. Usage: set_leverage <symbol> <leverage>")
+                return
+                
+            symbol = args[0]
+            leverage = int(args[1])
+            
+            print(f"\nSetting {leverage}x leverage for {symbol}")
+            result = self.order_handler._set_leverage(symbol, leverage)
+            
+            if result["status"] == "ok":
+                print(f"Leverage for {symbol} set to {leverage}x")
+            else:
+                print(f"Failed to set leverage: {result.get('message', 'Unknown error')}")
+                
+        except Exception as e:
+            print(f"\nError setting leverage: {str(e)}")
+
+    # ================================Cancellation of Orders=====================================
     
     def do_cancel(self, arg):
         """

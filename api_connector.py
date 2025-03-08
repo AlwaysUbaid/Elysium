@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, Optional, Any, List
+import hyperliquid
 
 import eth_account
 from eth_account.signers.local import LocalAccount
