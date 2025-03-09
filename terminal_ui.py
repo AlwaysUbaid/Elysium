@@ -5,6 +5,10 @@ import threading
 import json
 import queue
 from datetime import datetime
+
+import order_handler
+import scaled_order
+from scaled_order import scaledOrder
 from typing import Dict, List, Any, Optional, Tuple
 
 class ElysiumTerminalUI(cmd.Cmd):
@@ -38,6 +42,7 @@ class ElysiumTerminalUI(cmd.Cmd):
     - sell        Execute a market sell
     - limit_buy   Place a limit buy order
     - limit_sell  Place a limit sell order
+    - scaled order Place a scaled order
 
     Perpetual Trading:
     - perp_buy        Execute a perpetual market buy
@@ -309,6 +314,46 @@ class ElysiumTerminalUI(cmd.Cmd):
             else:
                 print(f"Limit buy order failed: {result.get('message', 'Unknown error')}")
                 
+        except Exception as e:
+            print(f"\nError placing limit buy order: {str(e)}")
+
+    def do_limit_scale(self, arg):
+        """
+        Place a limit buy order
+        Usage: limit_buy <symbol> <size> <price>
+        Example: limit_buy ETH 0.1 3000
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+
+        try:
+            args = arg.split()
+            if len(args) < 3:
+                print("Invalid arguments. Usage: limit_buy <symbol> <size> <price>")
+                return
+            "symbol: str, isBuy:bool, size: float, nOrders:float, startPrice:float, endPrice:float, skew:float"
+            symbol = args[0]
+            isBuy = float(args[1])
+            size = float(args[2])
+            nOrders = float(args[3])
+            startPrice = float(args[4])
+            endPrice = float(args[5])
+            skew = float(args[6])
+            print(f"\nPlacing scale order: {size} {symbol} {nOrders}@ {startPrice}-{endPrice}")
+            result = scaled_order.scaledOrder.scaledExe(symbol, isBuy, size, nOrders, startPrice, endPrice, skew)
+
+            if result["status"] == "ok":
+                print("scaled buy order placed successfully")
+                # Display the order ID
+                if "response" in result and "data" in result["response"] and "statuses" in result["response"]["data"]:
+                    status = result["response"]["data"]["statuses"][0]
+                    if "resting" in status:
+                        oid = status["resting"]["oid"]
+                        print(f"Order ID: {oid}")
+            else:
+                print(f"Limit buy order failed: {result.get('message', 'Unknown error')}")
+
         except Exception as e:
             print(f"\nError placing limit buy order: {str(e)}")
     
