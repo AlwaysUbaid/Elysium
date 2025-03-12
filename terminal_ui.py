@@ -2,6 +2,7 @@ import cmd
 import os
 import time
 import threading
+import logging
 import json
 import queue
 from datetime import datetime
@@ -22,6 +23,7 @@ class ElysiumTerminalUI(cmd.Cmd):
     ╚══════╝╚══════╝╚═╝   ╚══════╝╚═╝ ╚═════╝ ╚═╝     ╚═╝
     ===========================================================
     '''
+# Updated WELCOME_MSG variable for ElysiumTerminalUI class in terminal_ui.py
 
     WELCOME_MSG = '''
     Welcome to Elysium Trading Bot
@@ -47,12 +49,41 @@ class ElysiumTerminalUI(cmd.Cmd):
     - close_position  Close an entire perpetual position
     - set_leverage    Set leverage for a symbol
 
+    Advanced Order Strategies:
+    - scaled_buy          Place multiple buy orders across a price range
+    - scaled_sell         Place multiple sell orders across a price range
+    - market_scaled_buy   Place multiple buy orders based on current market prices
+    - market_scaled_sell  Place multiple sell orders based on current market prices
+    - perp_scaled_buy     Place multiple perpetual buy orders across a price range
+    - perp_scaled_sell    Place multiple perpetual sell orders across a price range
+    - help_scaled         Show detailed help for scaled orders
+    - help_market_scaled  Show detailed help for market-aware scaled orders
+
+    Grid Trading:
+    - grid_create    Create a new grid trading strategy
+    - grid_start     Start a grid trading strategy
+    - grid_stop      Stop a grid trading strategy
+    - grid_status    Check status of a grid strategy
+    - grid_list      List all grid strategies
+    - grid_stop_all  Stop all grid strategies
+    - help_grid      Show help for grid trading
+
+    TWAP Strategy:
+    - twap_create     Create a new TWAP execution
+    - twap_start      Start a TWAP execution
+    - twap_stop       Stop a TWAP execution
+    - twap_status     Check status of a TWAP execution
+    - twap_list       List all TWAP executions
+    - twap_stop_all   Stop all active TWAP executions
+    - twap_clean      Clean up completed TWAP executions
+
     Order Management:
     - cancel      Cancel specific order
     - cancel_all  Cancel all open orders
     - orders      List open orders
     - help        List all commands
     '''
+
 
     def __init__(self, api_connector, order_handler, config_manager):
         super().__init__()
@@ -502,7 +533,7 @@ class ElysiumTerminalUI(cmd.Cmd):
                 
         except Exception as e:
             print(f"\nError placing perpetual limit sell order: {str(e)}")
-
+# ===================Close Position============================
     def do_close_position(self, arg):
         """
         Close an entire perpetual position
@@ -539,6 +570,8 @@ class ElysiumTerminalUI(cmd.Cmd):
         except Exception as e:
             print(f"\nError closing position: {str(e)}")
 
+# ============================ Leverage Setting ===============================
+
     def do_set_leverage(self, arg):
         """
         Set leverage for a symbol
@@ -569,6 +602,967 @@ class ElysiumTerminalUI(cmd.Cmd):
         except Exception as e:
             print(f"\nError setting leverage: {str(e)}")
 
+    # ================================Scaled Order Part=====================================
+    def do_scaled_buy(self, arg):
+        """
+        Place multiple buy orders across a price range (scaled orders)
+        Usage: scaled_buy <symbol> <total_size> <num_orders> <start_price> <end_price> [skew]
+        Example: scaled_buy ETH 0.5 5 3200 3000 0
+        
+        Start price should be higher than end price for buy orders.
+        Skew value (optional): 0 = linear distribution, >0 = more weight to higher prices
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            args = arg.split()
+            if len(args) < 5:
+                print("Invalid arguments. Usage: scaled_buy <symbol> <total_size> <num_orders> <start_price> <end_price> [skew]")
+                return
+                
+            symbol = args[0]
+            total_size = float(args[1])
+            num_orders = int(args[2])
+            start_price = float(args[3])
+            end_price = float(args[4])
+            skew = float(args[5]) if len(args) > 5 else 0
+            
+            # Validate price direction
+            if start_price < end_price:
+                print("Warning: For buy orders, start_price should be higher than end_price. Swapping values.")
+                start_price, end_price = end_price, start_price
+            
+            print(f"\nPlacing {num_orders} scaled buy orders for {symbol}:")
+            print(f"Total size: {total_size}")
+            print(f"Price range: {start_price} to {end_price}")
+            print(f"Skew: {skew}")
+            
+            result = self.order_handler.scaled_orders(
+                symbol, True, total_size, num_orders, start_price, end_price, skew
+            )
+            
+            if result["status"] == "ok":
+                print(f"\n{result['message']}")
+                
+                # Display order details
+                headers = ["Order #", "Size", "Price"]
+                rows = []
+                
+                for i in range(len(result["sizes"])):
+                    rows.append([
+                        f"{i+1}/{num_orders}",
+                        f"{result['sizes'][i]:.8f}",
+                        f"{result['prices'][i]:.8f}"
+                    ])
+                
+                self._print_table(headers, rows)
+            else:
+                print(f"\nScaled buy order failed: {result.get('message', 'Unknown error')}")
+                
+        except Exception as e:
+            print(f"\nError executing scaled buy: {str(e)}")
+    
+    def do_scaled_sell(self, arg):
+        """
+        Place multiple sell orders across a price range (scaled orders)
+        Usage: scaled_sell <symbol> <total_size> <num_orders> <start_price> <end_price> [skew]
+        Example: scaled_sell ETH 0.5 5 3000 3200 0
+        
+        Start price should be lower than end price for sell orders.
+        Skew value (optional): 0 = linear distribution, >0 = more weight to lower prices
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            args = arg.split()
+            if len(args) < 5:
+                print("Invalid arguments. Usage: scaled_sell <symbol> <total_size> <num_orders> <start_price> <end_price> [skew]")
+                return
+                
+            symbol = args[0]
+            total_size = float(args[1])
+            num_orders = int(args[2])
+            start_price = float(args[3])
+            end_price = float(args[4])
+            skew = float(args[5]) if len(args) > 5 else 0
+            
+            # Validate price direction
+            if start_price > end_price:
+                print("Warning: For sell orders, start_price should be lower than end_price. Swapping values.")
+                start_price, end_price = end_price, start_price
+            
+            print(f"\nPlacing {num_orders} scaled sell orders for {symbol}:")
+            print(f"Total size: {total_size}")
+            print(f"Price range: {start_price} to {end_price}")
+            print(f"Skew: {skew}")
+            
+            result = self.order_handler.scaled_orders(
+                symbol, False, total_size, num_orders, start_price, end_price, skew
+            )
+            
+            if result["status"] == "ok":
+                print(f"\n{result['message']}")
+                
+                # Display order details
+                headers = ["Order #", "Size", "Price"]
+                rows = []
+                
+                for i in range(len(result["sizes"])):
+                    rows.append([
+                        f"{i+1}/{num_orders}",
+                        f"{result['sizes'][i]:.8f}",
+                        f"{result['prices'][i]:.8f}"
+                    ])
+                
+                self._print_table(headers, rows)
+            else:
+                print(f"\nScaled sell order failed: {result.get('message', 'Unknown error')}")
+                
+        except Exception as e:
+            print(f"\nError executing scaled sell: {str(e)}")
+    
+    def do_perp_scaled_buy(self, arg):
+        """
+        Place multiple perpetual buy orders across a price range (scaled orders)
+        Usage: perp_scaled_buy <symbol> <total_size> <num_orders> <start_price> <end_price> [leverage] [skew]
+        Example: perp_scaled_buy BTC 0.1 5 65000 64000 5 0
+        
+        Start price should be higher than end price for buy orders.
+        Leverage (optional): Leverage to use (default: 1)
+        Skew value (optional): 0 = linear distribution, >0 = more weight to higher prices
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            args = arg.split()
+            if len(args) < 5:
+                print("Invalid arguments. Usage: perp_scaled_buy <symbol> <total_size> <num_orders> <start_price> <end_price> [leverage] [skew]")
+                return
+                
+            symbol = args[0]
+            total_size = float(args[1])
+            num_orders = int(args[2])
+            start_price = float(args[3])
+            end_price = float(args[4])
+            leverage = int(args[5]) if len(args) > 5 else 1
+            skew = float(args[6]) if len(args) > 6 else 0
+            
+            # Validate price direction
+            if start_price < end_price:
+                print("Warning: For buy orders, start_price should be higher than end_price. Swapping values.")
+                start_price, end_price = end_price, start_price
+            
+            print(f"\nPlacing {num_orders} scaled perpetual buy orders for {symbol}:")
+            print(f"Total size: {total_size}")
+            print(f"Price range: {start_price} to {end_price}")
+            print(f"Leverage: {leverage}x")
+            print(f"Skew: {skew}")
+            
+            result = self.order_handler.perp_scaled_orders(
+                symbol, True, total_size, num_orders, start_price, end_price, leverage, skew
+            )
+            
+            if result["status"] == "ok":
+                print(f"\n{result['message']}")
+                
+                # Display order details
+                headers = ["Order #", "Size", "Price"]
+                rows = []
+                
+                for i in range(len(result["sizes"])):
+                    rows.append([
+                        f"{i+1}/{num_orders}",
+                        f"{result['sizes'][i]:.8f}",
+                        f"{result['prices'][i]:.8f}"
+                    ])
+                
+                self._print_table(headers, rows)
+            else:
+                print(f"\nScaled perpetual buy order failed: {result.get('message', 'Unknown error')}")
+                
+        except Exception as e:
+            print(f"\nError executing scaled perpetual buy: {str(e)}")
+    
+    def do_perp_scaled_sell(self, arg):
+        """
+        Place multiple perpetual sell orders across a price range (scaled orders)
+        Usage: perp_scaled_sell <symbol> <total_size> <num_orders> <start_price> <end_price> [leverage] [skew]
+        Example: perp_scaled_sell BTC 0.1 5 64000 65000 5 0
+        
+        Start price should be lower than end price for sell orders.
+        Leverage (optional): Leverage to use (default: 1)
+        Skew value (optional): 0 = linear distribution, >0 = more weight to lower prices
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            args = arg.split()
+            if len(args) < 5:
+                print("Invalid arguments. Usage: perp_scaled_sell <symbol> <total_size> <num_orders> <start_price> <end_price> [leverage] [skew]")
+                return
+                
+            symbol = args[0]
+            total_size = float(args[1])
+            num_orders = int(args[2])
+            start_price = float(args[3])
+            end_price = float(args[4])
+            leverage = int(args[5]) if len(args) > 5 else 1
+            skew = float(args[6]) if len(args) > 6 else 0
+            
+            # Validate price direction
+            if start_price > end_price:
+                print("Warning: For sell orders, start_price should be lower than end_price. Swapping values.")
+                start_price, end_price = end_price, start_price
+            
+            print(f"\nPlacing {num_orders} scaled perpetual sell orders for {symbol}:")
+            print(f"Total size: {total_size}")
+            print(f"Price range: {start_price} to {end_price}")
+            print(f"Leverage: {leverage}x")
+            print(f"Skew: {skew}")
+            
+            result = self.order_handler.perp_scaled_orders(
+                symbol, False, total_size, num_orders, start_price, end_price, leverage, skew
+            )
+            
+            if result["status"] == "ok":
+                print(f"\n{result['message']}")
+                
+                # Display order details
+                headers = ["Order #", "Size", "Price"]
+                rows = []
+                
+                for i in range(len(result["sizes"])):
+                    rows.append([
+                        f"{i+1}/{num_orders}",
+                        f"{result['sizes'][i]:.8f}",
+                        f"{result['prices'][i]:.8f}"
+                    ])
+                
+                self._print_table(headers, rows)
+            else:
+                print(f"\nScaled perpetual sell order failed: {result.get('message', 'Unknown error')}")
+                
+        except Exception as e:
+            print(f"\nError executing scaled perpetual sell: {str(e)}")
+
+    def do_help_scaled(self, arg):
+        """
+        Show help about scaled orders functionality
+        Usage: help_scaled
+        """
+        print("\n=== Scaled Orders Help ===")
+        print("\nScaled orders place multiple limit orders across a price range.")
+        print("They can help you get better average entry or exit prices by spreading orders.")
+        
+        print("\nCommands:")
+        print("  scaled_buy      - Place multiple spot buy orders across a price range")
+        print("  scaled_sell     - Place multiple spot sell orders across a price range")
+        print("  perp_scaled_buy  - Place multiple perpetual buy orders across a price range")
+        print("  perp_scaled_sell - Place multiple perpetual sell orders across a price range")
+        
+        print("\nSkew parameter:")
+        print("  0.0 = Linear distribution (equal size for all orders)")
+        print("  >0  = Exponential distribution (larger orders at better prices)")
+        print("  1.0 = Moderate skew")
+        print("  2.0 = Stronger skew")
+        print("  3.0+ = Very aggressive skew")
+        
+        print("\nExamples:")
+        print("  scaled_buy ETH 0.5 5 3200 3000 0")
+        print("  Places 5 buy orders totaling 0.5 ETH from $3200 down to $3000 with equal sizes")
+        
+        print("\n  scaled_sell ETH 0.5 5 3000 3200 2")
+        print("  Places 5 sell orders totaling 0.5 ETH from $3000 up to $3200 with more size on lower prices")
+        
+        print("\n  perp_scaled_buy BTC 0.1 5 65000 64000 5 1")
+        print("  Places 5 perpetual buy orders totaling 0.1 BTC from $65000 down to $64000 with 5x leverage")
+        print("  and moderately larger sizes on higher prices")
+        
+        print("\nPrice Direction:")
+        print("  For buy orders: start_price should be higher than end_price")
+        print("  For sell orders: start_price should be lower than end_price")
+        print("  (The system will automatically swap them if provided in the wrong order)")
+    # ================================Scaled Market order=====================================
+    def do_market_scaled_buy(self, arg):
+        """
+        Place multiple buy orders across a price range (scaled orders) with market awareness
+        Usage: market_scaled_buy <symbol> <total_size> <num_orders> [price_percent] [skew]
+        Example: market_scaled_buy ETH 0.5 5 5 0
+        
+        This creates 5 orders from 5% below best ask to best bid, adjusting for market conditions.
+        The price_percent parameter determines how far below the best ask to start (default: 3%).
+        Skew value (optional): 0 = linear distribution, >0 = more weight to higher prices
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            args = arg.split()
+            if len(args) < 3:
+                print("Invalid arguments. Usage: market_scaled_buy <symbol> <total_size> <num_orders> [price_percent] [skew]")
+                return
+                
+            symbol = args[0]
+            total_size = float(args[1])
+            num_orders = int(args[2])
+            price_percent = float(args[3]) if len(args) > 3 else 3.0  # Default to 3%
+            skew = float(args[4]) if len(args) > 4 else 0
+            
+            # Get current market data
+            try:
+                # Get order book
+                order_book = self.api_connector.info.l2_snapshot(symbol)
+                
+                if not order_book or "levels" not in order_book or len(order_book["levels"]) < 2:
+                    print(f"Error: Could not fetch order book for {symbol}")
+                    return
+                    
+                bid_levels = order_book["levels"][0]
+                ask_levels = order_book["levels"][1]
+                
+                if not bid_levels or not ask_levels:
+                    print(f"Error: Order book for {symbol} has no bids or asks")
+                    return
+                
+                best_bid = float(bid_levels[0]["px"])
+                best_ask = float(ask_levels[0]["px"])
+                
+                print(f"\nCurrent market for {symbol}:")
+                print(f"Best bid: {best_bid}")
+                print(f"Best ask: {best_ask}")
+                print(f"Spread: {best_ask - best_bid} ({((best_ask - best_bid) / best_bid) * 100:.2f}%)")
+                
+                # Calculate price range
+                start_price = best_ask * (1 - price_percent / 100)  # Start price is below ask
+                end_price = best_bid  # End price is at best bid
+                
+                print(f"\nPlacing {num_orders} market-aware scaled buy orders for {symbol}:")
+                print(f"Total size: {total_size}")
+                print(f"Price range: {start_price} to {end_price}")
+                print(f"This places orders from {price_percent}% below best ask down to the best bid")
+                print(f"Skew: {skew}")
+                
+                # Confirm with user
+                confirm = input("\nDo you want to proceed? (y/n): ")
+                if confirm.lower() != 'y':
+                    print("Order cancelled")
+                    return
+                
+                result = self.order_handler.scaled_orders(
+                    symbol, True, total_size, num_orders, start_price, end_price, skew, check_market=False
+                )
+                
+                if result["status"] == "ok":
+                    print(f"\n{result['message']}")
+                    
+                    # Display order details
+                    headers = ["Order #", "Size", "Price"]
+                    rows = []
+                    
+                    for i in range(len(result["sizes"])):
+                        rows.append([
+                            f"{i+1}/{num_orders}",
+                            f"{result['sizes'][i]:.8f}",
+                            f"{result['prices'][i]:.8f}"
+                        ])
+                    
+                    self._print_table(headers, rows)
+                else:
+                    print(f"\nMarket-aware scaled buy order failed: {result.get('message', 'Unknown error')}")
+                
+            except Exception as e:
+                print(f"Error fetching market data: {str(e)}")
+                return
+                
+        except Exception as e:
+            print(f"\nError executing market-aware scaled buy: {str(e)}")
+            
+    def do_market_scaled_sell(self, arg):
+        """
+        Place multiple sell orders across a price range (scaled orders) with market awareness
+        Usage: market_scaled_sell <symbol> <total_size> <num_orders> [price_percent] [skew]
+        Example: market_scaled_sell ETH 0.5 5 5 0
+        
+        This creates 5 orders from best ask to 5% above best bid, adjusting for market conditions.
+        The price_percent parameter determines how far above the best bid to end (default: 3%).
+        Skew value (optional): 0 = linear distribution, >0 = more weight to lower prices
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            args = arg.split()
+            if len(args) < 3:
+                print("Invalid arguments. Usage: market_scaled_sell <symbol> <total_size> <num_orders> [price_percent] [skew]")
+                return
+                
+            symbol = args[0]
+            total_size = float(args[1])
+            num_orders = int(args[2])
+            price_percent = float(args[3]) if len(args) > 3 else 3.0  # Default to 3%
+            skew = float(args[4]) if len(args) > 4 else 0
+            
+            # Get current market data
+            try:
+                # Get order book
+                order_book = self.api_connector.info.l2_snapshot(symbol)
+                
+                if not order_book or "levels" not in order_book or len(order_book["levels"]) < 2:
+                    print(f"Error: Could not fetch order book for {symbol}")
+                    return
+                    
+                bid_levels = order_book["levels"][0]
+                ask_levels = order_book["levels"][1]
+                
+                if not bid_levels or not ask_levels:
+                    print(f"Error: Order book for {symbol} has no bids or asks")
+                    return
+                
+                best_bid = float(bid_levels[0]["px"])
+                best_ask = float(ask_levels[0]["px"])
+                
+                print(f"\nCurrent market for {symbol}:")
+                print(f"Best bid: {best_bid}")
+                print(f"Best ask: {best_ask}")
+                print(f"Spread: {best_ask - best_bid} ({((best_ask - best_bid) / best_bid) * 100:.2f}%)")
+                
+                # Calculate price range
+                start_price = best_ask  # Start price is at best ask
+                end_price = best_bid * (1 + price_percent / 100)  # End price is above bid
+                
+                print(f"\nPlacing {num_orders} market-aware scaled sell orders for {symbol}:")
+                print(f"Total size: {total_size}")
+                print(f"Price range: {start_price} to {end_price}")
+                print(f"This places orders from best ask up to {price_percent}% above best bid")
+                print(f"Skew: {skew}")
+                
+                # Confirm with user
+                confirm = input("\nDo you want to proceed? (y/n): ")
+                if confirm.lower() != 'y':
+                    print("Order cancelled")
+                    return
+                
+                result = self.order_handler.scaled_orders(
+                    symbol, False, total_size, num_orders, start_price, end_price, skew, check_market=False
+                )
+                
+                if result["status"] == "ok":
+                    print(f"\n{result['message']}")
+                    
+                    # Display order details
+                    headers = ["Order #", "Size", "Price"]
+                    rows = []
+                    
+                    for i in range(len(result["sizes"])):
+                        rows.append([
+                            f"{i+1}/{num_orders}",
+                            f"{result['sizes'][i]:.8f}",
+                            f"{result['prices'][i]:.8f}"
+                        ])
+                    
+                    self._print_table(headers, rows)
+                else:
+                    print(f"\nMarket-aware scaled sell order failed: {result.get('message', 'Unknown error')}")
+                
+            except Exception as e:
+                print(f"Error fetching market data: {str(e)}")
+                return
+                
+        except Exception as e:
+            print(f"\nError executing market-aware scaled sell: {str(e)}")
+            
+    def do_help_market_scaled(self, arg):
+        """
+        Show help about market-aware scaled orders functionality
+        Usage: help_market_scaled
+        """
+        print("\n=== Market-Aware Scaled Orders Help ===")
+        print("\nMarket-aware scaled orders automatically adjust to current market conditions.")
+        print("They help you place orders at realistic prices based on the current order book.")
+        
+        print("\nCommands:")
+        print("  market_scaled_buy  - Place multiple buy orders from below ask to best bid")
+        print("  market_scaled_sell - Place multiple sell orders from best ask to above bid")
+        
+        print("\nParameters:")
+        print("  symbol       - Trading pair symbol (e.g., ETH or PURR/USDC)")
+        print("  total_size   - Total size to be distributed across all orders")
+        print("  num_orders   - Number of orders to place")
+        print("  price_percent - How far from market price to start/end (default: 3%)")
+        print("  skew         - Order size distribution (0=equal, >0=weighted)")
+        
+        print("\nExample for buying:")
+        print("  market_scaled_buy PURR/USDC 10 5 2 0")
+        print("  Places 5 buy orders totaling 10 PURR from 2% below best ask down to best bid")
+        
+        print("\nExample for selling:")
+        print("  market_scaled_sell ETH 0.5 4 3 1")
+        print("  Places 4 sell orders totaling 0.5 ETH from best ask up to 3% above best bid")
+        print("  With skew=1, more ETH is placed at lower prices")
+    # ================================Grid Trading part=====================================
+    # These are the commands to be added to the ElysiumTerminalUI class in terminal_ui.py
+
+   # Add these methods to your ElysiumTerminalUI class in terminal_ui.py
+
+    def do_grid_create(self, arg):
+        """
+        Create a grid trading strategy
+        Usage: grid_create SYMBOL MIN_PRICE MAX_PRICE NUM_GRIDS TOTAL_INVESTMENT [PERPETUAL] [LEVERAGE]
+        Example: grid_create AVAX 15 19 5 500 true 1
+        Example: grid_create HWTR/USDC 0.8 0.9 5 500 false 1
+        """
+        args = arg.split()
+        if len(args) < 5:
+            print("Invalid arguments. Use 'help grid_create' for more information.")
+            print("try this format: <symbol> <price_low> <price_high> <num_grids> <total_investment> [is_perp(`true`,if perpe)] [leverage]")
+            return
+
+        symbol = args[0]
+        min_price = float(args[1])
+        max_price = float(args[2])
+        num_grids = int(args[3])
+        total_investment = float(args[4])
+        perpetual = True if len(args) > 5 and args[5].lower() == "true" else False
+        leverage = float(args[6]) if len(args) > 6 else 1.0
+
+        print("Grid Strategy Details:")
+        print(f"Symbol: {symbol}")
+        print(f"Price Range: {min_price} to {max_price}")
+        print(f"Number of Grids: {num_grids}")
+        grid_size = (max_price - min_price) / num_grids
+        print(f"Grid Size: {grid_size}")
+        print(f"Total Investment: {total_investment}")
+        print(f"Order Type: {'Perpetual' if perpetual else 'Spot'}")
+        print(f"Leverage: {leverage}x")
+        
+        confirm = input("\nDo you want to proceed? (y/n): ")
+        if confirm.lower() != 'y':
+            return
+        
+        # Create a unique ID for the grid strategy
+        grid_id = f"grid_{symbol.replace('/', '_').replace('@', '')}"
+        count = 1
+        while hasattr(self, 'grid_strategies') and f"{grid_id}_{count}" in self.grid_strategies:
+            count += 1
+        grid_id = f"{grid_id}_{count}"
+        
+        # Initialize the grid strategy
+        strategy = self.initialize_grid_strategy(
+            symbol,
+            min_price,
+            max_price,
+            num_grids,
+            total_investment,
+            perpetual,
+            leverage
+        )
+        
+        # Store the strategy
+        if not hasattr(self, 'grid_strategies'):
+            self.grid_strategies = {}
+        self.grid_strategies[grid_id] = strategy
+        
+        print(f"Created grid strategy {grid_id}")
+        print(f"Use 'grid_start {grid_id}' to start the grid strategy")
+
+    def initialize_grid_strategy(self, symbol, min_price, max_price, num_grids, total_investment, perpetual=True, leverage=1):
+        """Initialize a grid strategy with proper handling for both spot and perpetual markets"""
+        # Check if this is a spot market
+        is_spot = "/" in symbol or symbol.startswith("@")
+        
+        # Calculate grid parameters
+        grid_size = (max_price - min_price) / num_grids
+        
+        # For spot markets, we calculate order size in base currency units
+        # For perpetual markets, we calculate in contract units 
+        if is_spot:
+            # For spot, size is in base currency units (approximation)
+            order_size_per_grid = (total_investment / num_grids) / ((min_price + max_price) / 2)
+        else:
+            # For perpetual, size is in contracts
+            order_size_per_grid = total_investment / (num_grids * ((min_price + max_price) / 2))
+        
+        order_size_per_grid = round(order_size_per_grid, 6)  # Round to 6 decimal places
+        
+        logging.info(f"Creating grid strategy for {symbol}: {num_grids} grids from {min_price} to {max_price}")
+        logging.info(f"Grid interval: {grid_size}, Order size per grid: {order_size_per_grid}")
+        
+        # Get current timestamp
+        timestamp = self.order_handler.get_timestamp()
+        
+        return {
+            "symbol": symbol,
+            "min_price": min_price,
+            "max_price": max_price,
+            "num_grids": num_grids,
+            "grid_size": grid_size,
+            "order_size_per_grid": order_size_per_grid,
+            "total_investment": total_investment,
+            "is_spot": is_spot,
+            "perpetual": perpetual,
+            "leverage": leverage,
+            "active": False,
+            "creation_time": timestamp,
+            "orders": []
+        }
+
+    def do_grid_start(self, arg):
+        """
+        Start a grid trading strategy
+        Usage: grid_start GRID_ID
+        Example: grid_start grid_AVAX_1
+        """
+        if not arg:
+            print("Please specify a grid ID. Use 'grid_list' to see available grids.")
+            return
+        
+        if not hasattr(self, 'grid_strategies') or arg not in self.grid_strategies:
+            print(f"Grid strategy {arg} not found.")
+            return
+        
+        strategy = self.grid_strategies[arg]
+        if strategy['active']:
+            print(f"Grid strategy {arg} is already running.")
+            return
+        
+        # Get current price
+        current_price = self.get_current_price(strategy['symbol'])
+        if not current_price:
+            print(f"Could not get current price for {strategy['symbol']}. Aborting.")
+            return
+            
+        print(f"Starting grid strategy for {strategy['symbol']}, current price: {current_price}")
+        
+        # Set leverage if it's a perpetual market and leverage > 1
+        if strategy['perpetual'] and strategy['leverage'] > 1:
+            print(f"Setting {strategy['leverage']}x leverage for {strategy['symbol']}")
+            try:
+                self.order_handler.update_leverage(strategy['symbol'], strategy['leverage'])
+                print(f"Leverage set to {strategy['leverage']}x")
+            except Exception as e:
+                print(f"Error setting leverage: {e}")
+                print("Continuing without setting leverage")
+        
+        # Place the grid orders
+        self.place_grid_orders(arg)
+        
+        # Mark the strategy as active
+        strategy['active'] = True
+        self.grid_strategies[arg] = strategy
+        
+        print(f"Started grid strategy {arg}")
+        print(f"The strategy will now place orders and manage them automatically")
+        print(f"Use 'grid_status {arg}' to check status")
+
+    def place_grid_orders(self, grid_id):
+        """Place all orders for a grid strategy"""
+        if not hasattr(self, 'grid_strategies') or grid_id not in self.grid_strategies:
+            print(f"Grid strategy {grid_id} not found.")
+            return
+        
+        strategy = self.grid_strategies[grid_id]
+        symbol = strategy['symbol']
+        min_price = strategy['min_price']
+        max_price = strategy['max_price']
+        num_grids = strategy['num_grids']
+        grid_size = strategy['grid_size']
+        order_size = strategy['order_size_per_grid']
+        is_spot = strategy['is_spot']
+        
+        # Clear any existing orders
+        strategy['orders'] = []
+        
+        # Place orders for each grid level
+        for i in range(num_grids + 1):
+            price = min_price + (i * grid_size)
+            price = round(price, 6)  # Round to 6 decimal places
+            
+            try:
+                # Place buy orders at the lower half of the grid
+                if i <= num_grids // 2:
+                    logging.info(f"Placing {'spot limit' if is_spot else 'perp limit'} buy: {order_size} {symbol} @ {price}")
+                    
+                    # Create order parameters - The key fix for spot vs perp
+                    if is_spot:
+                        # For spot markets
+                        order_result = self.order_handler.place_order(
+                            symbol=symbol,
+                            side="buy",
+                            size=order_size,
+                            price=price,
+                            order_type="limit",
+                            time_in_force="GTC"
+                        )
+                    else:
+                        # For perpetual markets
+                        order_result = self.order_handler.place_order(
+                            symbol=symbol,
+                            side="buy",
+                            size=order_size,
+                            price=price,
+                            order_type="limit",
+                            time_in_force="GTC"
+                        )
+                    
+                    if order_result and "order_id" in order_result:
+                        logging.info(f"{'Spot limit' if is_spot else 'Perp limit'} buy placed: order ID {order_result['order_id']}")
+                        logging.info(f"Placed grid buy order at {price}")
+                        strategy['orders'].append({
+                            "type": "buy",
+                            "price": price,
+                            "size": order_size,
+                            "order_id": order_result['order_id']
+                        })
+                
+                # Place sell orders at the upper half of the grid
+                else:
+                    logging.info(f"Placing {'spot limit' if is_spot else 'perp limit'} sell: {order_size} {symbol} @ {price}")
+                    
+                    # Create order parameters - The key fix for spot vs perp
+                    if is_spot:
+                        # For spot markets
+                        order_result = self.order_handler.place_order(
+                            symbol=symbol,
+                            side="sell",
+                            size=order_size,
+                            price=price,
+                            order_type="limit",
+                            time_in_force="GTC"
+                        )
+                    else:
+                        # For perpetual markets
+                        order_result = self.order_handler.place_order(
+                            symbol=symbol,
+                            side="sell",
+                            size=order_size,
+                            price=price,
+                            order_type="limit",
+                            time_in_force="GTC"
+                        )
+                    
+                    if order_result and "order_id" in order_result:
+                        logging.info(f"{'Spot limit' if is_spot else 'Perp limit'} sell placed: order ID {order_result['order_id']}")
+                        logging.info(f"Placed grid sell order at {price}")
+                        strategy['orders'].append({
+                            "type": "sell",
+                            "price": price,
+                            "size": order_size,
+                            "order_id": order_result['order_id']
+                        })
+                
+            except Exception as e:
+                logging.error(f"Error placing grid order at {price}: {e}")
+        
+        logging.info(f"Placed {len(strategy['orders'])} grid orders")
+        self.grid_strategies[grid_id] = strategy
+
+    def get_current_price(self, symbol):
+        """Get the current price of a symbol"""
+        try:
+            # Use api_connector's get_market_data method
+            market_data = self.api_connector.get_market_data(symbol)
+            
+            if market_data and "mid_price" in market_data and market_data["mid_price"] > 0:
+                return market_data["mid_price"]
+            
+            # Fallback to order book if mid price not available
+            if market_data and "order_book" in market_data:
+                order_book = market_data["order_book"]
+                if order_book and "levels" in order_book and len(order_book["levels"]) >= 2:
+                    bid_levels = order_book["levels"][0]
+                    ask_levels = order_book["levels"][1]
+                    
+                    if bid_levels and ask_levels and len(bid_levels) > 0 and len(ask_levels) > 0:
+                        best_bid = float(bid_levels[0]["px"])
+                        best_ask = float(ask_levels[0]["px"])
+                        return (best_bid + best_ask) / 2
+            
+            # If all else fails, try directly with the info object
+            if self.api_connector.info:
+                # Try to get price from all_mids
+                all_mids = self.api_connector.info.all_mids()
+                if symbol in all_mids:
+                    return float(all_mids[symbol])
+                
+            logging.error(f"Could not get price for {symbol}")
+            return None
+        except Exception as e:
+            logging.error(f"Error getting price for {symbol}: {e}")
+            return None
+
+    def do_grid_status(self, arg):
+        """
+        Check the status of a grid trading strategy
+        Usage: grid_status GRID_ID
+        Example: grid_status grid_AVAX_1
+        """
+        if not arg:
+            print("Please specify a grid ID. Use 'grid_list' to see available grids.")
+            return
+        
+        if not hasattr(self, 'grid_strategies') or arg not in self.grid_strategies:
+            print(f"Grid strategy {arg} not found.")
+            return
+        
+        strategy = self.grid_strategies[arg]
+        
+        print(f"\n=== Grid Strategy Status: {arg} ===")
+        print(f"Symbol: {strategy['symbol']}")
+        print(f"Status: {'Active' if strategy['active'] else 'Inactive'}")
+        print(f"Order Type: {'Perpetual' if strategy['perpetual'] else 'Spot'}")
+        print(f"Leverage: {strategy['leverage']}x")
+        print(f"Price Range: {strategy['min_price']} to {strategy['max_price']}")
+        print(f"Number of Grids: {strategy['num_grids']}")
+        print(f"Grid Size: {strategy['grid_size']}")
+        print(f"Order Size per Grid: {strategy['order_size_per_grid']}")
+        print(f"Total Investment: {strategy['total_investment']}")
+        
+        # Count active orders
+        buy_orders = len([o for o in strategy['orders'] if o['type'] == 'buy'])
+        sell_orders = len([o for o in strategy['orders'] if o['type'] == 'sell'])
+        print(f"Active Orders: {len(strategy['orders'])} ({buy_orders} buys, {sell_orders} sells)")
+
+    def do_grid_stop(self, arg):
+        """
+        Stop a grid trading strategy
+        Usage: grid_stop GRID_ID
+        Example: grid_stop grid_AVAX_1
+        """
+        if not arg:
+            print("Please specify a grid ID. Use 'grid_list' to see available grids.")
+            return
+        
+        if not hasattr(self, 'grid_strategies') or arg not in self.grid_strategies:
+            print(f"Grid strategy {arg} not found.")
+            return
+        
+        strategy = self.grid_strategies[arg]
+        if not strategy['active']:
+            print(f"Grid strategy {arg} is not running.")
+            return
+        
+        print(f"Stopping grid strategy {arg}...")
+        
+        # Cancel all open orders
+        for order in strategy['orders']:
+            try:
+                self.order_handler.cancel_order(strategy['symbol'], order['order_id'])
+                logging.info(f"Cancelled order {order['order_id']}")
+            except Exception as e:
+                logging.error(f"Error cancelling order {order['order_id']}: {e}")
+        
+        # Mark the strategy as inactive
+        strategy['active'] = False
+        strategy['orders'] = []
+        self.grid_strategies[arg] = strategy
+        
+        print(f"Stopped grid strategy {arg}")
+
+    def do_grid_list(self, arg):
+        """
+        List all grid trading strategies
+        Usage: grid_list
+        """
+        if not hasattr(self, 'grid_strategies') or not self.grid_strategies:
+            print("No grid strategies found.")
+            return
+        
+        print("\n=== Grid Strategies ===")
+        for grid_id, strategy in self.grid_strategies.items():
+            status = "Active" if strategy['active'] else "Inactive"
+            print(f"{grid_id}: {strategy['symbol']} - {status} - {strategy['min_price']} to {strategy['max_price']} - {len(strategy['orders'])} orders")
+
+    def do_grid_stop_all(self, arg):
+        """
+        Stop all active grid trading strategies
+        Usage: grid_stop_all
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            # Confirm with user
+            confirm = input("Are you sure you want to stop ALL grid strategies? All grid orders will be cancelled. (y/n): ")
+            if confirm.lower() != 'y':
+                print("Operation cancelled")
+                return
+                
+            # Stop all grids
+            import asyncio
+            count = asyncio.run(self.order_handler.stop_all_grids())
+            
+            print(f"\nStopped {count} grid strategies")
+            
+        except Exception as e:
+            print(f"\nError stopping grid strategies: {str(e)}")
+
+    def do_grid_monitor(self, arg):
+        """
+        Monitor and process filled orders for all active grid strategies
+        Usage: grid_monitor
+        Note: This is usually handled automatically by the system, but you can trigger it manually
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            # Process grids
+            import asyncio
+            success = asyncio.run(self.order_handler.process_grids())
+            
+            if success:
+                print("\nSuccessfully processed all grid strategies")
+            else:
+                print("\nEncountered errors while processing grid strategies")
+            
+        except Exception as e:
+            print(f"\nError monitoring grid strategies: {str(e)}")
+
+    def do_help_grid(self, arg):
+        """
+        Show help about grid trading functionality
+        Usage: help_grid
+        """
+        print("\n=== Grid Trading Help ===")
+        print("\nGrid trading creates multiple buy and sell orders across a price range,")
+        print("automatically buying low and selling high as the price moves within the range.")
+        print("Correct format: <symbol> <price_low> <price_high> <num_grids> <total_investment> [is_perp(`true`,if perpe)] [leverage]")
+        
+        print("\nCommands:")
+        print("  grid_create    - Create a new grid trading strategy")
+        print("  grid_start     - Start a grid trading strategy")
+        print("  grid_stop      - Stop a grid trading strategy")
+        print("  grid_status    - Check the status of a grid strategy")
+        print("  grid_list      - List all grid strategies")
+        print("  grid_stop_all  - Stop all grid strategies")
+        
+        print("\nHow Grid Trading Works:")
+        print("  1. You define a price range and number of grids")
+        print("  2. The system creates equally-spaced buy and sell orders across the range")
+        print("  3. When buy orders get filled, sell orders are placed at the same level")
+        print("  4. When sell orders get filled, buy orders are placed at the same level")
+        print("  5. Profit is made from the difference between buy and sell prices")
+        
+        print("\nExample:")
+        print("  grid_create ETH/USDC 3000 3500 10 1000")
+        print("  Creates a grid strategy for ETH/USDC with 10 grids between $3000 and $3500")
+        print("  using $1000 total investment")
+        
+        print("\n  grid_create BTC 60000 70000 20 5000 true 2")
+        print("  Creates a perpetual futures grid strategy for BTC with 20 grids")
+        print("  between $60,000 and $70,000, using $5000 with 2x leverage")
     # ================================Cancellation of Orders=====================================
     
     def do_cancel(self, arg):
@@ -791,3 +1785,256 @@ class ElysiumTerminalUI(cmd.Cmd):
         for row in rows:
             row_str = " | ".join(str(cell).ljust(col_widths[i]) for i, cell in enumerate(row))
             print(row_str)
+
+# =======================================TWAPS==================================================
+    def do_twap_create(self, arg):
+        """
+        Create a new TWAP execution
+        Usage: twap_create <symbol> <side> <quantity> <duration_minutes> <num_slices> [price_limit] [is_perp] [leverage]
+        Example: twap_create BTC buy 0.1 60 10 50000
+        Example: twap_create ETH buy 0.5 30 5 3000 true 2  # Perpetual with leverage
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            args = arg.split()
+            if len(args) < 5:
+                print("Invalid arguments. Usage: twap_create <symbol> <side> <quantity> <duration_minutes> <num_slices> [price_limit] [is_perp] [leverage]")
+                return
+                
+            symbol = args[0]
+            side = args[1].lower()
+            if side not in ['buy', 'sell']:
+                print("Side must be 'buy' or 'sell'")
+                return
+                
+            quantity = float(args[2])
+            duration_minutes = int(args[3])
+            num_slices = int(args[4])
+            
+            # Optional arguments
+            price_limit = None
+            is_perp = False
+            leverage = 1
+            
+            if len(args) > 5:
+                price_limit = float(args[5])
+            
+            if len(args) > 6:
+                is_perp_str = args[6].lower()
+                is_perp = is_perp_str in ['true', 't', 'yes', 'y', '1']
+            
+            if len(args) > 7 and is_perp:
+                leverage = int(args[7])
+            
+            # Create the TWAP
+            twap_id = self.order_handler.create_twap(
+                symbol, side, quantity, duration_minutes, num_slices, price_limit, is_perp, leverage
+            )
+            
+            print(f"\nCreated TWAP execution {twap_id}")
+            print(f"Symbol: {symbol}")
+            print(f"Side: {side}")
+            print(f"Total Quantity: {quantity}")
+            print(f"Duration: {duration_minutes} minutes")
+            print(f"Number of Slices: {num_slices}")
+            if price_limit:
+                print(f"Price Limit: {price_limit}")
+            if is_perp:
+                print(f"Order Type: Perpetual")
+                print(f"Leverage: {leverage}x")
+            else:
+                print(f"Order Type: Spot")
+            print(f"Quantity per Slice: {quantity / num_slices}")
+            print(f"Time between Slices: {(duration_minutes * 60) / num_slices} seconds")
+            print("\nUse 'twap_start {0}' to start the execution".format(twap_id))
+            
+        except Exception as e:
+            print(f"\nError creating TWAP: {str(e)}")
+
+    def do_twap_start(self, arg):
+        """
+        Start a TWAP execution
+        Usage: twap_start <twap_id>
+        Example: twap_start twap_20240308123045_1
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            twap_id = arg.strip()
+            if not twap_id:
+                print("Invalid arguments. Usage: twap_start <twap_id>")
+                return
+            
+            # Start the TWAP
+            success = self.order_handler.start_twap(twap_id)
+            
+            if success:
+                print(f"\nStarted TWAP execution {twap_id}")
+                print("Use 'twap_status {0}' to check the status".format(twap_id))
+            else:
+                print(f"\nFailed to start TWAP execution {twap_id}")
+            
+        except Exception as e:
+            print(f"\nError starting TWAP: {str(e)}")
+
+    def do_twap_stop(self, arg):
+        """
+        Stop a TWAP execution
+        Usage: twap_stop <twap_id>
+        Example: twap_stop twap_20240308123045_1
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            twap_id = arg.strip()
+            if not twap_id:
+                print("Invalid arguments. Usage: twap_stop <twap_id>")
+                return
+            
+            # Stop the TWAP
+            success = self.order_handler.stop_twap(twap_id)
+            
+            if success:
+                print(f"\nStopped TWAP execution {twap_id}")
+            else:
+                print(f"\nFailed to stop TWAP execution {twap_id}")
+            
+        except Exception as e:
+            print(f"\nError stopping TWAP: {str(e)}")
+
+    def do_twap_status(self, arg):
+        """
+        Get the status of a TWAP execution
+        Usage: twap_status <twap_id>
+        Example: twap_status twap_20240308123045_1
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            twap_id = arg.strip()
+            if not twap_id:
+                print("Invalid arguments. Usage: twap_status <twap_id>")
+                return
+            
+            # Get the status
+            status = self.order_handler.get_twap_status(twap_id)
+            
+            if status:
+                print(f"\n=== TWAP Execution Status: {twap_id} ===")
+                print(f"Symbol: {status['symbol']}")
+                print(f"Side: {status['side']}")
+                print(f"Status: {status['status']}")
+                print(f"Order Type: {'Perpetual' if status.get('is_perp', False) else 'Spot'}")
+                print(f"Total Quantity: {status['total_quantity']}")
+                print(f"Duration: {status['duration_minutes']} minutes")
+                print(f"Slices: {status['slices_executed']}/{status['num_slices']} ({status['completion_percentage']:.1f}%)")
+                print(f"Quantity per Slice: {status['quantity_per_slice']}")
+                print(f"Executed: {status['total_executed']}/{status['total_quantity']} ({(status['total_executed']/status['total_quantity']*100) if status['total_quantity'] > 0 else 0:.1f}%)")
+                if status['average_price'] > 0:
+                    print(f"Average Execution Price: {status['average_price']}")
+                if status['start_time']:
+                    print(f"Start Time: {status['start_time'].strftime('%Y-%m-%d %H:%M:%S')}")
+                if status['end_time']:
+                    print(f"Expected End Time: {status['end_time'].strftime('%Y-%m-%d %H:%M:%S')}")
+                if status['errors']:
+                    print("\nErrors:")
+                    for error in status['errors']:
+                        print(f"  - {error}")
+            else:
+                print(f"\nTWAP execution {twap_id} not found")
+            
+        except Exception as e:
+            print(f"\nError getting TWAP status: {str(e)}")
+
+    def do_twap_list(self, arg):
+        """
+        List all TWAP executions
+        Usage: twap_list
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            # Get the list
+            twap_list = self.order_handler.list_twaps()
+            
+            # Display active TWAPs
+            print("\n=== Active TWAP Executions ===")
+            if twap_list["active"]:
+                for twap in twap_list["active"]:
+                    print(f"ID: {twap['id']}")
+                    print(f"  Symbol: {twap['symbol']}")
+                    print(f"  Side: {twap['side']}")
+                    print(f"  Type: {'Perpetual' if twap.get('is_perp', False) else 'Spot'}")
+                    print(f"  Progress: {twap['slices_executed']}/{twap['num_slices']} slices ({twap['completion_percentage']:.1f}%)")
+                    print(f"  Executed: {twap['total_executed']}/{twap['total_quantity']}")
+                    if twap['average_price'] > 0:
+                        print(f"  Avg Price: {twap['average_price']}")
+                    print()
+            else:
+                print("No active TWAP executions\n")
+            
+            # Display completed TWAPs
+            print("=== Completed TWAP Executions ===")
+            if twap_list["completed"]:
+                for twap in twap_list["completed"]:
+                    print(f"ID: {twap['id']}")
+                    print(f"  Symbol: {twap['symbol']}")
+                    print(f"  Side: {twap['side']}")
+                    print(f"  Type: {'Perpetual' if twap.get('is_perp', False) else 'Spot'}")
+                    print(f"  Completed: {twap['slices_executed']}/{twap['num_slices']} slices")
+                    print(f"  Executed: {twap['total_executed']}/{twap['total_quantity']}")
+                    if twap['average_price'] > 0:
+                        print(f"  Avg Price: {twap['average_price']}")
+                    print()
+            else:
+                print("No completed TWAP executions")
+            
+        except Exception as e:
+            print(f"\nError listing TWAPs: {str(e)}")
+
+    def do_twap_stop_all(self, arg):
+        """
+        Stop all active TWAP executions
+        Usage: twap_stop_all
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            # Stop all TWAPs
+            count = self.order_handler.stop_all_twaps()
+            
+            print(f"\nStopped {count} TWAP executions")
+            
+        except Exception as e:
+            print(f"\nError stopping TWAPs: {str(e)}")
+
+    def do_twap_clean(self, arg):
+        """
+        Clean up completed TWAP executions
+        Usage: twap_clean
+        """
+        if not self.api_connector.exchange:
+            print("Not connected to exchange. Use 'connect' first.")
+            return
+            
+        try:
+            # Clean up completed TWAPs
+            count = self.order_handler.clean_completed_twaps()
+            
+            print(f"\nCleaned up {count} completed TWAP executions")
+            
+        except Exception as e:
+            print(f"\nError cleaning TWAPs: {str(e)}")
