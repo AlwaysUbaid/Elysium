@@ -9,6 +9,9 @@ from typing import Dict, Optional, List, Union, Any
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 
+# Import the grid trading module
+from grid_trading import GridTrading
+
 class OrderHandler:
     """Handles all order execution for Elysium Trading Platform"""
     
@@ -17,6 +20,10 @@ class OrderHandler:
         self.info = info
         self.wallet_address = None
         self.logger = logging.getLogger(__name__)
+        self.api_connector = None
+
+        # Initialize grid trading module
+        self.grid_trading = GridTrading(self)
     # =================================Spot Trading==============================================
     def market_buy(self, symbol: str, size: float, slippage: float = 0.05) -> Dict[str, Any]:
         """
@@ -638,6 +645,140 @@ class OrderHandler:
         except Exception as e:
             self.logger.error(f"Error setting leverage: {str(e)}")
             return {"status": "error", "message": str(e)}
+        
+# =================================Testing Grid Trading============================================
+    def test_market_data(self, symbol: str) -> Dict[str, Any]:
+        """
+        Test market data retrieval for a symbol before creating a grid
+        
+        Args:
+            symbol: Trading pair symbol
+            
+        Returns:
+            Dict with test results and market data if available
+        """
+        if not self.api_connector:
+            return {
+                "success": False,
+                "message": "API connector not set. Please connect to exchange first."
+            }
+        
+        if not self.exchange or not self.info:
+            return {
+                "success": False,
+                "message": "Not connected to exchange. Please connect first."
+            }
+        
+        try:
+            # Try to get market data
+            market_data = self.api_connector.get_market_data(symbol)
+            
+            if "error" in market_data:
+                return {
+                    "success": False,
+                    "message": f"Could not get market data: {market_data['error']}"
+                }
+            
+            # Check if we have the necessary price data
+            if "mid_price" not in market_data and "best_bid" not in market_data and "best_ask" not in market_data:
+                return {
+                    "success": False,
+                    "message": f"Could not determine price for {symbol}"
+                }
+            
+            # If we have price data, consider it a success
+            price = market_data.get("mid_price")
+            if not price:
+                if market_data.get("best_bid") and market_data.get("best_ask"):
+                    price = (market_data["best_bid"] + market_data["best_ask"]) / 2
+                elif market_data.get("best_bid"):
+                    price = market_data["best_bid"]
+                elif market_data.get("best_ask"):
+                    price = market_data["best_ask"]
+            
+            return {
+                "success": True,
+                "message": f"Successfully retrieved market data for {symbol}",
+                "price": price,
+                "market_data": market_data
+            }
+        
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Error testing market data: {str(e)}"
+            }
+# ====================================Grid Trading=================================================
+    def create_grid(self, symbol: str, upper_price: float, lower_price: float, 
+                    num_grids: int, total_investment: float, is_perp: bool = False, 
+                    leverage: int = 1, take_profit: Optional[float] = None,
+                    stop_loss: Optional[float] = None) -> str:
+        """
+        Create a new grid trading strategy
+        
+        Delegates to grid_trading module
+        """
+        return self.grid_trading.create_grid(
+            symbol, upper_price, lower_price, num_grids, total_investment,
+            is_perp, leverage, take_profit, stop_loss
+        )
+    
+    def start_grid(self, grid_id: str) -> Dict[str, Any]:
+        """
+        Start a grid trading strategy
+        
+        Delegates to grid_trading module
+        """
+        return self.grid_trading.start_grid(grid_id)
+    
+    def stop_grid(self, grid_id: str) -> Dict[str, Any]:
+        """
+        Stop a grid trading strategy
+        
+        Delegates to grid_trading module
+        """
+        return self.grid_trading.stop_grid(grid_id)
+    
+    def get_grid_status(self, grid_id: str) -> Dict[str, Any]:
+        """
+        Get the status of a grid trading strategy
+        
+        Delegates to grid_trading module
+        """
+        return self.grid_trading.get_grid_status(grid_id)
+    
+    def list_grids(self) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        List all grid trading strategies
+        
+        Delegates to grid_trading module
+        """
+        return self.grid_trading.list_grids()
+    
+    def clean_completed_grids(self) -> int:
+        """
+        Clean up completed grid strategies
+        
+        Delegates to grid_trading module
+        """
+        return self.grid_trading.clean_completed_grids()
+    
+    def stop_all_grids(self) -> int:
+        """
+        Stop all active grid strategies
+        
+        Delegates to grid_trading module
+        """
+        return self.grid_trading.stop_all_grids()
+    
+    def modify_grid(self, grid_id: str, take_profit: Optional[float] = None, 
+                   stop_loss: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Modify parameters of an existing grid strategy
+        
+        Delegates to grid_trading module
+        """
+        return self.grid_trading.modify_grid(grid_id, take_profit, stop_loss)
 # =================================Order Cancellation==============================================
     def cancel_order(self, symbol: str, order_id: int) -> Dict[str, Any]:
         """
@@ -1237,526 +1378,3 @@ class TwapExecution:
     OrderHandler.list_twaps = list_twaps
     OrderHandler.clean_completed_twaps = clean_completed_twaps
     OrderHandler.stop_all_twaps = stop_all_twaps
-
-    # ========================================= GRID Trading ==========================================
-    # This file contains the implementation code for grid trading
-# It should be inserted into the order_handler.py file
-
-class GridTradingStrategy:
-    """Handles grid trading strategy implementation"""
-    
-    def __init__(self, order_handler, symbol: str, price_range_low: float, price_range_high: float, 
-                num_grids: int, total_investment: float, is_perp: bool = False, leverage: int = 1):
-        """
-        Initialize grid trading strategy
-        
-        Args:
-            order_handler: The order handler object
-            symbol: Trading pair symbol
-            price_range_low: Lower price boundary for the grid
-            price_range_high: Upper price boundary for the grid
-            num_grids: Number of grid levels
-            total_investment: Total investment amount
-            is_perp: Whether to use perpetual futures
-            leverage: Leverage to use (only for perpetual futures)
-        """
-        self.order_handler = order_handler
-        self.symbol = symbol
-        self.price_range_low = price_range_low
-        self.price_range_high = price_range_high
-        self.num_grids = num_grids
-        self.total_investment = total_investment
-        self.is_perp = is_perp
-        self.leverage = leverage
-        
-        # Internal tracking
-        self.grid_levels = []
-        self.grid_orders = {}  # {price_level: {"order_id": oid, "side": "buy"/"sell", "size": size}}
-        self.active = False
-        self.logger = self.order_handler.logger
-        
-        # Calculate grid parameters
-        self.calculate_grid_levels()
-
-    def initialize_grid_strategy(exchange, info, symbol, min_price, max_price, num_grids, total_investment, perpetual=True, leverage=1):
-        """Initialize a grid strategy with proper handling for both spot and perpetual markets"""
-        # Check if this is a spot market
-        is_spot = "/" in symbol or symbol.startswith("@")
-        
-        # Calculate grid parameters
-        grid_size = (max_price - min_price) / num_grids
-        order_size_per_grid = total_investment / (num_grids * max_price)  # Approximate size to ensure total investment
-        
-        logging.info(f"Creating grid strategy for {symbol}: {num_grids} grids from {min_price} to {max_price}")
-        logging.info(f"Grid interval: {grid_size}, Order size per grid: {order_size_per_grid}")
-        
-        # Place initial grid orders
-        active_orders = []
-        
-        # If spot market, use appropriate order type
-        order_type = "limit" if is_spot else "perp"
-    
-        for i in range(num_grids + 1):
-            price = min_price + (i * grid_size)
-            
-            # Place buy orders on the lower half of the grid
-            if i < num_grids / 2:
-                result = place_grid_order(exchange, info, symbol, "buy", order_size_per_grid, price, order_type)
-                if result.get("status") == "ok":
-                    active_orders.append({"side": "buy", "price": price, "size": order_size_per_grid, "result": result})
-            
-            # Place sell orders on the upper half of the grid
-            else:
-                result = place_grid_order(exchange, info, symbol, "sell", order_size_per_grid, price, order_type)
-                if result.get("status") == "ok":
-                    active_orders.append({"side": "sell", "price": price, "size": order_size_per_grid, "result": result})
-        
-        return {
-            "symbol": symbol,
-            "min_price": min_price,
-            "max_price": max_price,
-            "num_grids": num_grids,
-            "grid_size": grid_size,
-            "order_size_per_grid": order_size_per_grid,
-            "total_investment": total_investment,
-            "is_spot": is_spot,
-            "active_orders": active_orders
-        }
-    
-    def calculate_grid_levels(self):
-        """Calculate grid price levels and order sizes"""
-        # Calculate grid interval
-        self.grid_interval = (self.price_range_high - self.price_range_low) / self.num_grids
-        
-        # Calculate price levels
-        self.grid_levels = [self.price_range_low + i * self.grid_interval for i in range(self.num_grids + 1)]
-        
-        # Calculate order size per grid
-        investment_per_grid = self.total_investment / self.num_grids
-        self.order_size = investment_per_grid / self.price_range_high  # Use upper price to be conservative
-        
-        # Adjust for leverage if using perp
-        if self.is_perp and self.leverage > 1:
-            self.order_size = self.order_size * self.leverage
-        
-        # Format the order size
-        self.order_size = self.order_handler._format_size(self.symbol, self.order_size)
-        
-        self.logger.info(f"Grid Strategy for {self.symbol}: {self.num_grids} grids from {self.price_range_low} to {self.price_range_high}")
-        self.logger.info(f"Grid interval: {self.grid_interval}, Order size per grid: {self.order_size}")
-    
-    async def start(self):
-        """Start the grid trading strategy"""
-        if self.active:
-            self.logger.warning("Grid strategy is already active")
-            return False
-        
-        try:
-            # Get current price
-            current_price = await self.get_current_price()
-            if not current_price:
-                self.logger.error("Failed to get current price for grid strategy")
-                return False
-            
-            self.logger.info(f"Starting grid strategy for {self.symbol}, current price: {current_price}")
-            
-            # Place grid orders
-            self.place_grid_orders(current_price)
-            
-            self.active = True
-            return True
-        
-        except Exception as e:
-            self.logger.error(f"Error starting grid strategy: {str(e)}")
-            return False
-    
-    async def stop(self):
-        """Stop the grid trading strategy and cancel all grid orders"""
-        if not self.active:
-            self.logger.warning("Grid strategy is not active")
-            return False
-        
-        try:
-            # Cancel all grid orders
-            self.logger.info(f"Stopping grid strategy for {self.symbol}")
-            await self.cancel_all_grid_orders()
-            
-            self.active = False
-            return True
-        
-        except Exception as e:
-            self.logger.error(f"Error stopping grid strategy: {str(e)}")
-            return False
-    
-    async def get_current_price(self):
-        """Get current price for the symbol"""
-        try:
-            # Get mid price from all_mids
-            all_mids = self.order_handler.info.all_mids()
-            if self.symbol in all_mids:
-                return float(all_mids[self.symbol])
-            
-            # Fallback to order book if mid price not available
-            order_book = self.order_handler.info.l2_snapshot(self.symbol)
-            if order_book and "levels" in order_book and len(order_book["levels"]) >= 2:
-                bid = float(order_book["levels"][0][0]["px"])
-                ask = float(order_book["levels"][1][0]["px"])
-                return (bid + ask) / 2
-            
-            return None
-        except Exception as e:
-            self.logger.error(f"Error getting current price: {str(e)}")
-            return None
-    
-    def place_grid_orders(self, current_price):
-        """Place grid orders based on current price"""
-        try:
-            successful_orders = 0
-            for i, price in enumerate(self.grid_levels):
-                # Skip the level if it's exactly at current price
-                if abs(price - current_price) < 0.0001:
-                    continue
-                
-                # Determine side (buy below current price, sell above)
-                is_buy = price < current_price
-                
-                # Format the price
-                formatted_price = self.order_handler._format_price(self.symbol, price)
-                
-                # Place the order (different method based on spot or perp)
-                try:
-                    if self.is_perp:
-                        if is_buy:
-                            result = self.order_handler.perp_limit_buy(
-                                self.symbol, self.order_size, formatted_price, self.leverage
-                            )
-                        else:
-                            result = self.order_handler.perp_limit_sell(
-                                self.symbol, self.order_size, formatted_price, self.leverage
-                            )
-                    else:
-                        if is_buy:
-                            result = self.order_handler.limit_buy(
-                                self.symbol, self.order_size, formatted_price
-                            )
-                        else:
-                            result = self.order_handler.limit_sell(
-                                self.symbol, self.order_size, formatted_price
-                            )
-                    
-                    # Process results
-                    if result and result["status"] == "ok":
-                        statuses = result.get("response", {}).get("data", {}).get("statuses", [])
-                        
-                        if statuses and "resting" in statuses[0]:
-                            oid = statuses[0]["resting"]["oid"]
-                            self.grid_orders[price] = {
-                                "order_id": oid,
-                                "side": "buy" if is_buy else "sell",
-                                "size": self.order_size,
-                                "price": formatted_price
-                            }
-                            self.logger.info(f"Placed grid {'buy' if is_buy else 'sell'} order at {formatted_price}, ID: {oid}")
-                            successful_orders += 1
-                        else:
-                            self.logger.warning(f"Order response did not contain resting order ID: {result}")
-                    else:
-                        self.logger.warning(f"Order placement failed: {result}")
-                        
-                    # Small delay to avoid rate limiting
-                    time.sleep(0.1)
-                    
-                except Exception as e:
-                    self.logger.error(f"Error placing grid order at {formatted_price}: {str(e)}")
-            
-            self.logger.info(f"Placed {successful_orders} grid orders out of {len(self.grid_levels)} levels")
-            return successful_orders > 0
-            
-        except Exception as e:
-            self.logger.error(f"Error placing grid orders: {str(e)}")
-            return False
-    
-    async def cancel_all_grid_orders(self):
-        """Cancel all grid orders"""
-        try:
-            for price, order_info in self.grid_orders.items():
-                try:
-                    result = self.order_handler.cancel_order(self.symbol, order_info["order_id"])
-                    if result["status"] == "ok":
-                        self.logger.info(f"Cancelled grid order at {price}")
-                except Exception as e:
-                    self.logger.error(f"Error cancelling grid order at {price}: {str(e)}")
-            
-            self.grid_orders = {}
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Error cancelling all grid orders: {str(e)}")
-            return False
-    
-    async def process_filled_orders(self):
-        """Process filled grid orders and place new orders"""
-        if not self.active:
-            return
-        
-        try:
-            # Get all open orders
-            open_orders = self.order_handler.get_open_orders(self.symbol)
-            open_order_ids = {order["oid"] for order in open_orders}
-            
-            # Find filled orders
-            filled_orders = []
-            for price, order_info in list(self.grid_orders.items()):
-                if order_info["order_id"] not in open_order_ids:
-                    # This order is no longer open, so it was filled or cancelled
-                    self.logger.info(f"Grid order filled at {price}")
-                    filled_orders.append((price, order_info))
-                    # Remove from tracking
-                    del self.grid_orders[price]
-            
-            # Place counter orders for filled orders
-            for price, order_info in filled_orders:
-                # Place a counter order at the same price level
-                is_buy = order_info["side"] == "sell"  # Opposite of filled order
-                
-                result = None
-                if self.is_perp:
-                    if is_buy:
-                        result = self.order_handler.perp_limit_buy(
-                            self.symbol, self.order_size, price, self.leverage
-                        )
-                    else:
-                        result = self.order_handler.perp_limit_sell(
-                            self.symbol, self.order_size, price, self.leverage
-                        )
-                else:
-                    if is_buy:
-                        result = self.order_handler.limit_buy(
-                            self.symbol, self.order_size, price
-                        )
-                    else:
-                        result = self.order_handler.limit_sell(
-                            self.symbol, self.order_size, price
-                        )
-                
-                # Process results
-                if result and result["status"] == "ok":
-                    status = result["response"]["data"]["statuses"][0]
-                    if "resting" in status:
-                        oid = status["resting"]["oid"]
-                        self.grid_orders[price] = {
-                            "order_id": oid,
-                            "side": "buy" if is_buy else "sell",
-                            "size": self.order_size,
-                            "price": price
-                        }
-                        self.logger.info(f"Placed counter {'buy' if is_buy else 'sell'} order at {price}")
-            
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Error processing filled grid orders: {str(e)}")
-            return False
-    
-    def get_status(self):
-        """Get current status of the grid strategy"""
-        buy_orders = [o for p, o in self.grid_orders.items() if o["side"] == "buy"]
-        sell_orders = [o for p, o in self.grid_orders.items() if o["side"] == "sell"]
-        
-        return {
-            "symbol": self.symbol,
-            "is_perp": self.is_perp,
-            "active": self.active,
-            "price_range_low": self.price_range_low,
-            "price_range_high": self.price_range_high,
-            "num_grids": self.num_grids,
-            "grid_interval": self.grid_interval,
-            "order_size": self.order_size,
-            "total_investment": self.total_investment,
-            "leverage": self.leverage if self.is_perp else None,
-            "total_orders": len(self.grid_orders),
-            "buy_orders": len(buy_orders),
-            "sell_orders": len(sell_orders)
-        }
-
-
-# Now add the grid trading manager methods to the OrderHandler class
-def __init_grid_if_needed(self):
-    """Initialize grid trading components if needed"""
-    if not hasattr(self, 'active_grids'):
-        self.active_grids = {}  # Dictionary to store active grid strategies by ID
-        self.grid_id_counter = 1
-
-def create_grid(self, symbol: str, price_range_low: float, price_range_high: float, 
-            num_grids: int, total_investment: float, is_perp: bool = False, 
-            leverage: int = 1) -> str:
-    """
-    Create a new grid trading strategy
-    
-    Args:
-        symbol: Trading pair symbol
-        price_range_low: Lower price boundary for the grid
-        price_range_high: Upper price boundary for the grid
-        num_grids: Number of grid levels
-        total_investment: Total investment amount
-        is_perp: Whether to use perpetual futures
-        leverage: Leverage to use (only for perpetual futures)
-        
-    Returns:
-        str: A unique ID for the grid strategy
-    """
-    self.__init_grid_if_needed()
-    
-    grid_id = f"grid_{symbol}_{self.grid_id_counter}"
-    self.grid_id_counter += 1
-    
-    grid = GridTradingStrategy(
-        self,
-        symbol,
-        price_range_low,
-        price_range_high,
-        num_grids,
-        total_investment,
-        is_perp,
-        leverage
-    )
-    
-    self.active_grids[grid_id] = grid
-    self.logger.info(f"Created grid strategy {grid_id} for {symbol}")
-    
-    return grid_id
-
-async def start_grid(self, grid_id: str) -> bool:
-    """
-    Start a grid trading strategy
-    
-    Args:
-        grid_id: The ID of the grid strategy to start
-        
-    Returns:
-        bool: True if started successfully, False otherwise
-    """
-    self.__init_grid_if_needed()
-    
-    if grid_id not in self.active_grids:
-        self.logger.error(f"Cannot start grid {grid_id} - not found")
-        return False
-    
-    grid = self.active_grids[grid_id]
-    success = await grid.start()
-    
-    if success:
-        self.logger.info(f"Started grid strategy {grid_id}")
-    else:
-        self.logger.warning(f"Failed to start grid strategy {grid_id}")
-    
-    return success
-
-async def stop_grid(self, grid_id: str) -> bool:
-    """
-    Stop a grid trading strategy
-    
-    Args:
-        grid_id: The ID of the grid strategy to stop
-        
-    Returns:
-        bool: True if stopped successfully, False otherwise
-    """
-    self.__init_grid_if_needed()
-    
-    if grid_id not in self.active_grids:
-        self.logger.error(f"Cannot stop grid {grid_id} - not found")
-        return False
-    
-    grid = self.active_grids[grid_id]
-    success = await grid.stop()
-    
-    if success:
-        self.logger.info(f"Stopped grid strategy {grid_id}")
-    else:
-        self.logger.warning(f"Failed to stop grid strategy {grid_id}")
-    
-    return success
-
-def get_grid_status(self, grid_id: str) -> dict:
-    """
-    Get the status of a grid trading strategy
-    
-    Args:
-        grid_id: The ID of the grid strategy
-        
-    Returns:
-        dict: The status of the grid strategy, or None if not found
-    """
-    self.__init_grid_if_needed()
-    
-    if grid_id not in self.active_grids:
-        self.logger.error(f"Cannot get status for grid {grid_id} - not found")
-        return None
-    
-    grid = self.active_grids[grid_id]
-    status = grid.get_status()
-    status["id"] = grid_id
-    
-    return status
-
-def list_grids(self) -> list:
-    """
-    List all grid trading strategies
-    
-    Returns:
-        list: A list of grid strategy statuses
-    """
-    self.__init_grid_if_needed()
-    
-    grid_list = []
-    for grid_id, grid in self.active_grids.items():
-        status = grid.get_status()
-        status["id"] = grid_id
-        grid_list.append(status)
-    
-    return grid_list
-
-async def process_grids(self) -> bool:
-    """
-    Process all active grid strategies to handle filled orders
-    
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    self.__init_grid_if_needed()
-    
-    success = True
-    for grid_id, grid in self.active_grids.items():
-        if grid.active:
-            if not await grid.process_filled_orders():
-                success = False
-    
-    return success
-
-async def stop_all_grids(self) -> int:
-    """
-    Stop all active grid strategies
-    
-    Returns:
-        int: The number of grid strategies that were stopped
-    """
-    self.__init_grid_if_needed()
-    
-    count = 0
-    for grid_id in list(self.active_grids.keys()):
-        if await self.stop_grid(grid_id):
-            count += 1
-    
-    self.logger.info(f"Stopped {count} grid strategies")
-    return count
-
-# Add methods to OrderHandler class
-OrderHandler.__init_grid_if_needed = __init_grid_if_needed
-OrderHandler.create_grid = create_grid
-OrderHandler.start_grid = start_grid
-OrderHandler.stop_grid = stop_grid
-OrderHandler.get_grid_status = get_grid_status
-OrderHandler.list_grids = list_grids
-OrderHandler.process_grids = process_grids
-OrderHandler.stop_all_grids = stop_all_grids
