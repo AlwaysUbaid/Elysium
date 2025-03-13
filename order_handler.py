@@ -9,8 +9,7 @@ from typing import Dict, Optional, List, Union, Any
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 
-# Import the grid trading module
-from grid_trading import GridTrading
+
 
 class OrderHandler:
     """Handles all order execution for Elysium Trading Platform"""
@@ -22,8 +21,6 @@ class OrderHandler:
         self.logger = logging.getLogger(__name__)
         self.api_connector = None
 
-        # Initialize grid trading module
-        self.grid_trading = GridTrading(self)
     # =================================Spot Trading==============================================
     def market_buy(self, symbol: str, size: float, slippage: float = 0.05) -> Dict[str, Any]:
         """
@@ -645,140 +642,6 @@ class OrderHandler:
         except Exception as e:
             self.logger.error(f"Error setting leverage: {str(e)}")
             return {"status": "error", "message": str(e)}
-        
-# =================================Testing Grid Trading============================================
-    def test_market_data(self, symbol: str) -> Dict[str, Any]:
-        """
-        Test market data retrieval for a symbol before creating a grid
-        
-        Args:
-            symbol: Trading pair symbol
-            
-        Returns:
-            Dict with test results and market data if available
-        """
-        if not self.api_connector:
-            return {
-                "success": False,
-                "message": "API connector not set. Please connect to exchange first."
-            }
-        
-        if not self.exchange or not self.info:
-            return {
-                "success": False,
-                "message": "Not connected to exchange. Please connect first."
-            }
-        
-        try:
-            # Try to get market data
-            market_data = self.api_connector.get_market_data(symbol)
-            
-            if "error" in market_data:
-                return {
-                    "success": False,
-                    "message": f"Could not get market data: {market_data['error']}"
-                }
-            
-            # Check if we have the necessary price data
-            if "mid_price" not in market_data and "best_bid" not in market_data and "best_ask" not in market_data:
-                return {
-                    "success": False,
-                    "message": f"Could not determine price for {symbol}"
-                }
-            
-            # If we have price data, consider it a success
-            price = market_data.get("mid_price")
-            if not price:
-                if market_data.get("best_bid") and market_data.get("best_ask"):
-                    price = (market_data["best_bid"] + market_data["best_ask"]) / 2
-                elif market_data.get("best_bid"):
-                    price = market_data["best_bid"]
-                elif market_data.get("best_ask"):
-                    price = market_data["best_ask"]
-            
-            return {
-                "success": True,
-                "message": f"Successfully retrieved market data for {symbol}",
-                "price": price,
-                "market_data": market_data
-            }
-        
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"Error testing market data: {str(e)}"
-            }
-# ====================================Grid Trading=================================================
-    def create_grid(self, symbol: str, upper_price: float, lower_price: float, 
-                    num_grids: int, total_investment: float, is_perp: bool = False, 
-                    leverage: int = 1, take_profit: Optional[float] = None,
-                    stop_loss: Optional[float] = None) -> str:
-        """
-        Create a new grid trading strategy
-        
-        Delegates to grid_trading module
-        """
-        return self.grid_trading.create_grid(
-            symbol, upper_price, lower_price, num_grids, total_investment,
-            is_perp, leverage, take_profit, stop_loss
-        )
-    
-    def start_grid(self, grid_id: str) -> Dict[str, Any]:
-        """
-        Start a grid trading strategy
-        
-        Delegates to grid_trading module
-        """
-        return self.grid_trading.start_grid(grid_id)
-    
-    def stop_grid(self, grid_id: str) -> Dict[str, Any]:
-        """
-        Stop a grid trading strategy
-        
-        Delegates to grid_trading module
-        """
-        return self.grid_trading.stop_grid(grid_id)
-    
-    def get_grid_status(self, grid_id: str) -> Dict[str, Any]:
-        """
-        Get the status of a grid trading strategy
-        
-        Delegates to grid_trading module
-        """
-        return self.grid_trading.get_grid_status(grid_id)
-    
-    def list_grids(self) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        List all grid trading strategies
-        
-        Delegates to grid_trading module
-        """
-        return self.grid_trading.list_grids()
-    
-    def clean_completed_grids(self) -> int:
-        """
-        Clean up completed grid strategies
-        
-        Delegates to grid_trading module
-        """
-        return self.grid_trading.clean_completed_grids()
-    
-    def stop_all_grids(self) -> int:
-        """
-        Stop all active grid strategies
-        
-        Delegates to grid_trading module
-        """
-        return self.grid_trading.stop_all_grids()
-    
-    def modify_grid(self, grid_id: str, take_profit: Optional[float] = None, 
-                   stop_loss: Optional[float] = None) -> Dict[str, Any]:
-        """
-        Modify parameters of an existing grid strategy
-        
-        Delegates to grid_trading module
-        """
-        return self.grid_trading.modify_grid(grid_id, take_profit, stop_loss)
 # =================================Order Cancellation==============================================
     def cancel_order(self, symbol: str, order_id: int) -> Dict[str, Any]:
         """

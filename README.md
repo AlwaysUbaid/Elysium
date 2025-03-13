@@ -21,7 +21,6 @@ A professional command-line trading platform built for executing trades on the H
 - 📊 **Market-Aware Scaled Orders** - Automatically set price levels based on current market conditions
 - ⏱️ **TWAP Orders** - Time-Weighted Average Price execution strategy
 - 🤖 **Market Making** - Automated trading that places and manages buy/sell orders around the mid price
-- 🔄 **Grid Trading** - Automated buy low, sell high strategy with multiple price levels
 - 🚫 Easily cancel specific or all open orders
 - 📜 View your complete trading history
 - 🔐 Secure password protection for application access
@@ -212,24 +211,6 @@ twap_list
 
 Example: `twap_create ETH buy 0.5 30 5 3000` (creates a TWAP to buy 0.5 ETH over 30 minutes in 5 slices with a price limit of $3000)
 
-### Grid Trading
-
-Automated buy low, sell high strategy with multiple price levels:
-
-```
-grid_create <symbol> <price_low> <price_high> <num_grids> <total_investment> [is_perp] [leverage]
-grid_start <grid_id>
-grid_status <grid_id>
-grid_stop <grid_id>
-grid_list
-grid_stop_all
-help_grid
-```
-
-Example: `grid_create PURR/USDC 3000 3500 10 1000` (creates a grid strategy for ETH/USDC with 10 equally-spaced levels between $3000 and $3500, using $1000 total investment)
-
-Example with perpetuals: `grid_create BTC 60000 70000 20 5000 true 2` (creates a perpetual futures grid strategy for BTC with 20 grids between $60,000 and $70,000, using $5000 with 2x leverage)
-
 ### Order Management
 
 - Cancel orders:
@@ -244,7 +225,6 @@ Example with perpetuals: `grid_create BTC 60000 70000 20 5000 true 2` (creates a
 - `help_strategies` - Help for trading strategies
 - `help_scaled` - Detailed explanation of scaled orders
 - `help_market_scaled` - Help for market-aware scaled orders
-- `help_grid` - Help for grid trading
 - `clear` - Clear the screen
 - `exit` or `Ctrl+D` - Exit the application
 
@@ -266,8 +246,7 @@ Example with perpetuals: `grid_create BTC 60000 70000 20 5000 true 2` (creates a
    - `1.0` = Moderate skew, `2.0` = Stronger skew, `3.0+` = Very aggressive skew
 
 6. **Automated Strategies**:
-   - Market making places orders at configurable spreads around the mid price
-   - Grid trading profits from price movements within a range by automatically buying at lower prices and selling at higher prices
+   - Market making places orders at configurable spreads around the mid price.
 
 ## 🔧 Troubleshooting
 
@@ -341,44 +320,6 @@ Performance Metrics:
 >>> stop_strategy
 Stopping strategy: Pure Market Making
 Strategy stopped successfully.
-```
-
-### Grid Trading
-
-```
->>> grid_create ETH/USDC 3000 3500 10 1000
-
-Grid Strategy Details:
-Symbol: ETH/USDC
-Price Range: 3000.0 to 3500.0
-Number of Grids: 10
-Grid Size: 50.0
-Total Investment: 1000.0
-Order Type: Spot
-
-Do you want to proceed? (y/n): y
-
-Created grid strategy grid_ETH/USDC_1
-Use 'grid_start grid_ETH/USDC_1' to start the grid strategy
-
->>> grid_start grid_ETH/USDC_1
-
-Started grid strategy grid_ETH/USDC_1
-The strategy will now place orders and manage them automatically
-Use 'grid_status grid_ETH/USDC_1' to check status
-
->>> grid_status grid_ETH/USDC_1
-
-=== Grid Strategy Status: grid_ETH/USDC_1 ===
-Symbol: ETH/USDC
-Status: Active
-Order Type: Spot
-Price Range: 3000.0 to 3500.0
-Number of Grids: 10
-Grid Size: 50.0
-Order Size per Grid: 0.03
-Total Investment: 1000.0
-Active Orders: 10 (5 buys, 5 sells)
 ```
 
 ### TWAP Execution

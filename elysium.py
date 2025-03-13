@@ -12,7 +12,6 @@ from api_connector import ApiConnector
 from order_handler import OrderHandler
 from config_manager import ConfigManager
 from terminal_ui import ElysiumTerminalUI
-from grid_trading import GridTrading
 
 
 def setup_logging(log_level=logging.INFO, log_file=None):
@@ -64,7 +63,7 @@ def main():
         order_handler = OrderHandler(None, None)  # Will be initialized when connected
 
         # Set up cross-references between components
-        order_handler.api_connector = api_connector  # This is critical for grid trading to work
+        order_handler.api_connector = api_connector  
         
         # Create and start the CLI
         terminal = ElysiumTerminalUI(api_connector, order_handler, config_manager)
