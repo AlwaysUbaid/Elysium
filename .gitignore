@@ -1,3 +1,10 @@
 .DS_Store
 dontshareconfig.py
 elysium_config.json
+/__pycache__/
+/__pycache__/*
+/__pycache__/*/*
+/__pycache__/*/*/*
+/__pycache__/*/*/*/*
+/__pycache__/*/*/*/*/*
+/__pycache__/*/*/*/*/*/*
