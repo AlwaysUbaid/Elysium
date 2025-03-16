@@ -6,3 +6,12 @@ python-dotenv>=0.21.0
 prettytable>=3.5.0
 msgpack>=1.0.4
 pycryptodome>=3.16.0
+
+# hyperliquid==0.1.19
+python-telegram-bot==13.7
+python-dotenv==1.0.0
+cryptography==41.0.5
+PyJWT==2.8.0
+
+urllib3==1.26.15
+httpx==0.23.0

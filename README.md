@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![HyperLiquid](https://img.shields.io/badge/HyperLiquid-API-green.svg)](https://hyperliquid.xyz)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
-[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)]()
 
 A professional command-line trading platform built for executing trades on the HyperLiquid exchange with simplicity and efficiency.
 
@@ -20,6 +20,8 @@ A professional command-line trading platform built for executing trades on the H
 - 📐 **Scaled Orders** - Create multiple orders at different price levels with custom distribution
 - 📊 **Market-Aware Scaled Orders** - Automatically set price levels based on current market conditions
 - ⏱️ **TWAP Orders** - Time-Weighted Average Price execution strategy
+- 🤖 **Market Making** - Automated trading that places and manages buy/sell orders around the mid price
+- 🔄 **Grid Trading** - Automated buy low, sell high strategy with multiple price levels
 - 🚫 Easily cancel specific or all open orders
 - 📜 View your complete trading history
 - 🔐 Secure password protection for application access
@@ -28,7 +30,7 @@ A professional command-line trading platform built for executing trades on the H
 
 - 📱 **Mobile Notifications** - Get alerts for order fills and liquidation warnings
 - 📊 **Advanced Charting** - Interactive charts with technical indicators
-- 🤖 **Automated Strategies** - Implement custom trading strategies with triggers
+- 🤖 **Additional Automated Strategies** - More configurable trading strategies
 
 ## 🛠️ Installation
 
@@ -121,6 +123,50 @@ Once inside the CLI, here are the core commands:
   set_leverage <symbol> <leverage>
   ```
 
+### Strategy Commands
+
+Elysium now supports various automated trading strategies:
+
+```
+select_strategy        Select and configure a trading strategy
+strategy_status        Check the status of the current strategy
+stop_strategy          Stop the currently running strategy
+strategy_params        View parameters of a strategy
+help_strategies        Show help for trading strategies
+```
+
+#### Market Making Strategy
+
+The `pure_mm` strategy automatically places and manages buy and sell orders around the mid price to earn the spread:
+
+```
+>>> select_strategy pure_mm
+
+=== 'pure_mm' Parameters ===
+symbol: BTC - Trading pair symbol
+bid_spread: 0.0005 - Spread below mid price for buy orders (as a decimal)
+ask_spread: 0.0005 - Spread above mid price for sell orders (as a decimal)
+order_amount: 0.001 - Size of each order
+refresh_time: 30 - Time in seconds between order refresh
+is_perp: False - Whether to trade perpetual contracts (True) or spot (False)
+leverage: 1 - Leverage to use for perpetual trading (if is_perp is True)
+
+Do you want to customize these parameters? (y/n): y
+symbol (Trading pair symbol) [BTC]: ETH/USDC
+bid_spread (Spread below mid price for buy orders (as a decimal)) [0.0005]: 0.001
+ask_spread (Spread above mid price for sell orders (as a decimal)) [0.0005]: 0.001
+order_amount (Size of each order) [0.001]: 0.01
+refresh_time (Time in seconds between order refresh) [30]: 60
+is_perp (Whether to trade perpetual contracts (True) or spot (False)) [False]: False
+leverage (Leverage to use for perpetual trading (if is_perp is True)) [1]: 
+
+Start strategy with these parameters? (y/n): y
+
+Started strategy: Pure Market Making
+Use 'strategy_status' to check status.
+Use 'stop_strategy' to stop the strategy.
+```
+
 ### Advanced Order Strategies
 
 #### Scaled Orders
@@ -166,6 +212,24 @@ twap_list
 
 Example: `twap_create ETH buy 0.5 30 5 3000` (creates a TWAP to buy 0.5 ETH over 30 minutes in 5 slices with a price limit of $3000)
 
+### Grid Trading
+
+Automated buy low, sell high strategy with multiple price levels:
+
+```
+grid_create <symbol> <price_low> <price_high> <num_grids> <total_investment> [is_perp] [leverage]
+grid_start <grid_id>
+grid_status <grid_id>
+grid_stop <grid_id>
+grid_list
+grid_stop_all
+help_grid
+```
+
+Example: `grid_create PURR/USDC 3000 3500 10 1000` (creates a grid strategy for ETH/USDC with 10 equally-spaced levels between $3000 and $3500, using $1000 total investment)
+
+Example with perpetuals: `grid_create BTC 60000 70000 20 5000 true 2` (creates a perpetual futures grid strategy for BTC with 20 grids between $60,000 and $70,000, using $5000 with 2x leverage)
+
 ### Order Management
 
 - Cancel orders:
@@ -177,8 +241,10 @@ Example: `twap_create ETH buy 0.5 30 5 3000` (creates a TWAP to buy 0.5 ETH over
 ### Help Commands
 
 - `help` - Display available commands
+- `help_strategies` - Help for trading strategies
 - `help_scaled` - Detailed explanation of scaled orders
 - `help_market_scaled` - Help for market-aware scaled orders
+- `help_grid` - Help for grid trading
 - `clear` - Clear the screen
 - `exit` or `Ctrl+D` - Exit the application
 
@@ -199,6 +265,10 @@ Example: `twap_create ETH buy 0.5 30 5 3000` (creates a TWAP to buy 0.5 ETH over
    - `>0.0` = Exponential distribution (more weight to orders at better prices)
    - `1.0` = Moderate skew, `2.0` = Stronger skew, `3.0+` = Very aggressive skew
 
+6. **Automated Strategies**:
+   - Market making places orders at configurable spreads around the mid price
+   - Grid trading profits from price movements within a range by automatically buying at lower prices and selling at higher prices
+
 ## 🔧 Troubleshooting
 
 If you encounter issues:
@@ -209,6 +279,7 @@ If you encounter issues:
 4. Double-check the symbol format
 5. For issues with perpetual orders, verify your account has sufficient margin
 6. For scaled orders, confirm that your price range is reasonable for current market conditions
+7. For strategies, use `strategy_status` to check for error messages
 
 ## 📖 Example Workflows
 
@@ -235,32 +306,79 @@ Closing position for BTC (slippage: 5.0%)
 Position closed successfully
 ```
 
-### Scaled Orders
+### Market Making Strategy
 
 ```
->>> market_scaled_buy PURR/USDC 10 5 2 0
+>>> select_strategy pure_mm
 
-Current market for PURR/USDC:
-Best bid: 5.6988
-Best ask: 5.7557
-Spread: 0.0569 (1.00%)
+=== 'pure_mm' Parameters ===
+symbol: BTC - Trading pair symbol
+bid_spread: 0.0005 - Spread below mid price for buy orders (as a decimal)
+ask_spread: 0.0005 - Spread above mid price for sell orders (as a decimal)
+order_amount: 0.001 - Size of each order
+refresh_time: 30 - Time in seconds between order refresh
+is_perp: False - Whether to trade perpetual contracts (True) or spot (False)
+leverage: 1 - Leverage to use for perpetual trading (if is_perp is True)
 
-Placing 5 market-aware scaled buy orders for PURR/USDC:
-Total size: 10.0
-Price range: 5.635 to 5.6988
-This places orders from 2% below best ask down to the best bid
-Skew: 0.0
+Do you want to customize these parameters? (y/n): n
+
+Started strategy: Pure Market Making
+
+>>> strategy_status
+=== Active Strategy: Pure Market Making ===
+Module: pure_mm
+Status: Running
+Current state: Placed orders around mid price 32338.5
+Performance Metrics:
+  symbol: BTC
+  mid_price: 32338.5
+  bid_price: 32322.33
+  ask_price: 32354.67
+  has_buy_order: True
+  has_sell_order: True
+  last_refresh: 2025-03-13 15:45:23
+
+>>> stop_strategy
+Stopping strategy: Pure Market Making
+Strategy stopped successfully.
+```
+
+### Grid Trading
+
+```
+>>> grid_create ETH/USDC 3000 3500 10 1000
+
+Grid Strategy Details:
+Symbol: ETH/USDC
+Price Range: 3000.0 to 3500.0
+Number of Grids: 10
+Grid Size: 50.0
+Total Investment: 1000.0
+Order Type: Spot
 
 Do you want to proceed? (y/n): y
 
-Successfully placed 5/5 orders
-Order # | Size       | Price     
---------|------------|----------
-1/5     | 2.00000000 | 5.63500000
-2/5     | 2.00000000 | 5.65095000
-3/5     | 2.00000000 | 5.66690000
-4/5     | 2.00000000 | 5.68285000
-5/5     | 2.00000000 | 5.69880000
+Created grid strategy grid_ETH/USDC_1
+Use 'grid_start grid_ETH/USDC_1' to start the grid strategy
+
+>>> grid_start grid_ETH/USDC_1
+
+Started grid strategy grid_ETH/USDC_1
+The strategy will now place orders and manage them automatically
+Use 'grid_status grid_ETH/USDC_1' to check status
+
+>>> grid_status grid_ETH/USDC_1
+
+=== Grid Strategy Status: grid_ETH/USDC_1 ===
+Symbol: ETH/USDC
+Status: Active
+Order Type: Spot
+Price Range: 3000.0 to 3500.0
+Number of Grids: 10
+Grid Size: 50.0
+Order Size per Grid: 0.03
+Total Investment: 1000.0
+Active Orders: 10 (5 buys, 5 sells)
 ```
 
 ### TWAP Execution
