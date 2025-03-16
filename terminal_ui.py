@@ -58,6 +58,8 @@ class ElysiumTerminalUI(cmd.Cmd):
 
 
     Advanced Order Strategies:
+
+    Scaled Orders:
     - scaled_buy          Place multiple buy orders across a price range
     - scaled_sell         Place multiple sell orders across a price range
     - market_scaled_buy   Place multiple buy orders based on current market prices
