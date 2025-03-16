@@ -1,6 +1,7 @@
 import cmd
 import os
 import time
+import hyper
 import threading
 import json
 import queue
