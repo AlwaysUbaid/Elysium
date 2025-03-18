@@ -6,13 +6,25 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 
-def setup_logging(log_level: int = logging.INFO, log_file: Optional[str] = None) -> logging.Logger:
-    """Set up logging configuration"""
+def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> logging.Logger:
+    """
+    Set up logging configuration
+    
+    Args:
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        log_file: Optional path to log file
+        
+    Returns:
+        Logger instance
+    """
+    # Convert string log level to logging constant
+    numeric_level = getattr(logging, log_level.upper(), logging.INFO)
+    
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     
     # Configure the root logger
     logging.basicConfig(
-        level=log_level,
+        level=numeric_level,
         format=log_format,
         handlers=[
             logging.StreamHandler(sys.stdout)
@@ -28,11 +40,28 @@ def setup_logging(log_level: int = logging.INFO, log_file: Optional[str] = None)
     return logging.getLogger("elysium")
 
 def format_number(number: float, decimal_places: int = 2) -> str:
-    """Format a number with the specified decimal places"""
+    """
+    Format a number with the specified decimal places
+    
+    Args:
+        number: Number to format
+        decimal_places: Number of decimal places
+        
+    Returns:
+        Formatted number string
+    """
     return f"{number:.{decimal_places}f}"
 
 def format_price(price: float) -> str:
-    """Format a price with appropriate decimal places"""
+    """
+    Format a price with appropriate decimal places
+    
+    Args:
+        price: Price to format
+        
+    Returns:
+        Formatted price string
+    """
     if price < 0.001:
         return f"{price:.8f}"
     elif price < 1:
@@ -43,7 +72,15 @@ def format_price(price: float) -> str:
         return f"{price:.2f}"
 
 def format_size(size: float) -> str:
-    """Format a size with appropriate decimal places"""
+    """
+    Format a size with appropriate decimal places
+    
+    Args:
+        size: Size to format
+        
+    Returns:
+        Formatted size string
+    """
     if size < 0.001:
         return f"{size:.8f}"
     elif size < 1:
@@ -52,13 +89,28 @@ def format_size(size: float) -> str:
         return f"{size:.2f}"
 
 def format_timestamp(timestamp: int) -> str:
-    """Format a timestamp to date time string"""
+    """
+    Format a timestamp to date time string
+    
+    Args:
+        timestamp: Timestamp in milliseconds
+        
+    Returns:
+        Formatted date time string
+    """
     return datetime.fromtimestamp(timestamp / 1000).strftime("%Y-%m-%d %H:%M:%S")
 
 def print_table(headers: List[str], rows: List[List[Any]], title: Optional[str] = None) -> None:
-    """Print a formatted table to the console"""
+    """
+    Print a formatted table to the console
+    
+    Args:
+        headers: List of column headers
+        rows: List of rows, each containing data for each column
+        title: Optional title for the table
+    """
     # Calculate column widths
-    col_widths = [len(h) for h in headers]
+    col_widths = [len(str(h)) for h in headers]
     for row in rows:
         for i, cell in enumerate(row):
             col_widths[i] = max(col_widths[i], len(str(cell)))
@@ -69,7 +121,7 @@ def print_table(headers: List[str], rows: List[List[Any]], title: Optional[str] 
         print("=" * len(title))
     
     # Print headers
-    header_str = " | ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers))
+    header_str = " | ".join(str(h).ljust(col_widths[i]) for i, h in enumerate(headers))
     print(header_str)
     print("-" * len(header_str))
     
@@ -78,21 +130,71 @@ def print_table(headers: List[str], rows: List[List[Any]], title: Optional[str] 
         row_str = " | ".join(str(cell).ljust(col_widths[i]) for i, cell in enumerate(row))
         print(row_str)
 
-def load_fills_history() -> List[Dict[str, Any]]:
-    """Load trading fills history from file"""
-    fills = []
-    try:
-        if os.path.exists("fills"):
-            with open("fills", "r") as f:
-                for line in f:
-                    fills.extend(json.loads(line.strip()))
-    except Exception as e:
-        logging.error(f"Error loading fills history: {str(e)}")
+def load_json_file(file_path: str, default: Any = None) -> Any:
+    """
+    Load JSON from a file
     
-    return fills
+    Args:
+        file_path: Path to the JSON file
+        default: Value to return if file doesn't exist or loading fails
+        
+    Returns:
+        Loaded JSON data or default value
+    """
+    try:
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as f:
+                return json.load(f)
+        return default
+    except Exception as e:
+        logging.error(f"Error loading JSON file {file_path}: {str(e)}")
+        return default
+
+def save_json_file(file_path: str, data: Any) -> bool:
+    """
+    Save data to a JSON file
+    
+    Args:
+        file_path: Path to save the file
+        data: Data to save
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        with open(file_path, 'w') as f:
+            json.dump(data, f, indent=2)
+        return True
+    except Exception as e:
+        logging.error(f"Error saving to JSON file {file_path}: {str(e)}")
+        return False
+
+def safe_float(value: Any, default: float = 0.0) -> float:
+    """
+    Safely convert a value to float
+    
+    Args:
+        value: Value to convert
+        default: Default value if conversion fails
+        
+    Returns:
+        Float value or default
+    """
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
 
 def calculate_pnl_metrics(fills: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Calculate PnL metrics from trading history"""
+    """
+    Calculate PnL metrics from trading history
+    
+    Args:
+        fills: List of trade fills
+        
+    Returns:
+        Dictionary with PnL metrics
+    """
     if not fills:
         return {
             "total_trades": 0,
@@ -106,12 +208,12 @@ def calculate_pnl_metrics(fills: List[Dict[str, Any]]) -> Dict[str, Any]:
         }
     
     total_trades = len(fills)
-    total_volume = sum(float(fill["sz"]) * float(fill["px"]) for fill in fills)
-    total_pnl = sum(float(fill.get("closedPnl", 0)) for fill in fills)
+    total_volume = sum(safe_float(fill.get("sz", 0)) * safe_float(fill.get("px", 0)) for fill in fills)
+    total_pnl = sum(safe_float(fill.get("closedPnl", 0)) for fill in fills)
     
     # Separate wins and losses
-    wins = [float(fill.get("closedPnl", 0)) for fill in fills if float(fill.get("closedPnl", 0)) > 0]
-    losses = [float(fill.get("closedPnl", 0)) for fill in fills if float(fill.get("closedPnl", 0)) < 0]
+    wins = [safe_float(fill.get("closedPnl", 0)) for fill in fills if safe_float(fill.get("closedPnl", 0)) > 0]
+    losses = [safe_float(fill.get("closedPnl", 0)) for fill in fills if safe_float(fill.get("closedPnl", 0)) < 0]
     
     win_count = len(wins)
     loss_count = len(losses)

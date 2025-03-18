@@ -81,3 +81,47 @@ class ConfigManager:
         except Exception as e:
             self.logger.error(f"Error verifying password: {str(e)}")
             return False
+    
+    # Trading configuration
+    def save_trading_config(self, trading_config: Dict[str, Any]) -> bool:
+        """Save trading configuration"""
+        try:
+            self.config['trading'] = trading_config
+            return self.save_config()
+        except Exception as e:
+            self.logger.error(f"Error saving trading config: {str(e)}")
+            return False
+    
+    def get_trading_config(self) -> Dict[str, Any]:
+        """Get trading configuration"""
+        return self.config.get('trading', {})
+    
+    # UI preferences
+    def save_ui_preferences(self, ui_prefs: Dict[str, Any]) -> bool:
+        """Save UI preferences"""
+        try:
+            self.config['ui_preferences'] = ui_prefs
+            return self.save_config()
+        except Exception as e:
+            self.logger.error(f"Error saving UI preferences: {str(e)}")
+            return False
+    
+    def get_ui_preferences(self) -> Dict[str, Any]:
+        """Get UI preferences"""
+        return self.config.get('ui_preferences', {})
+    
+    # Strategy settings
+    def save_strategy_settings(self, strategy_id: str, settings: Dict[str, Any]) -> bool:
+        """Save settings for a specific strategy"""
+        try:
+            if 'strategies' not in self.config:
+                self.config['strategies'] = {}
+            self.config['strategies'][strategy_id] = settings
+            return self.save_config()
+        except Exception as e:
+            self.logger.error(f"Error saving strategy settings: {str(e)}")
+            return False
+    
+    def get_strategy_settings(self, strategy_id: str) -> Dict[str, Any]:
+        """Get settings for a specific strategy"""
+        return self.config.get('strategies', {}).get(strategy_id, {})
