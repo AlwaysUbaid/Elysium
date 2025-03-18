@@ -1517,3 +1517,19 @@ class ElysiumTelegramBot:
             reply_markup=ReplyKeyboardRemove()
         )
         return ConversationHandler.END
+    
+    # Add this function to elysium_telegram_bot.py
+    def notify_telegram_bot(bot, message):
+        """Send notification to all admin users via Telegram bot"""
+        if bot is None:
+            return
+        
+        try:
+            for user_id in bot.admin_user_ids:
+                bot.updater.bot.send_message(
+                    chat_id=user_id,
+                    text=message,
+                    parse_mode=telegram.ParseMode.MARKDOWN
+                )
+        except Exception as e:
+            bot.logger.error(f"Error sending Telegram notification: {str(e)}")
