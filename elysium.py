@@ -5,6 +5,7 @@ import sys
 import logging
 import argparse
 import json
+import telegram
 import threading
 import importlib.util
 from pathlib import Path
