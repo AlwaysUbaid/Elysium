@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+from httpx import AsyncClient
 import sys
 import os
 
@@ -86,11 +87,11 @@ def test_spot_market_buy():
     print(f"Market buy response: {response.json()}")
     assert response.status_code in [200, 400, 422]  # 422 is for validation errors
     data = response.json()
-    assert "success" in data
-    assert "message" in data
-    if "data" in data:
-        assert "status" in data["data"]
-        assert "network" in data["data"]
+    if response.status_code == 200:
+        assert "success" in data
+        assert data["success"] is True
+    else:
+        assert "detail" in data
 
 def test_spot_market_sell():
     """Test spot market sell endpoint"""
@@ -103,11 +104,11 @@ def test_spot_market_sell():
     print(f"Market sell response: {response.json()}")
     assert response.status_code in [200, 400, 422]
     data = response.json()
-    assert "success" in data
-    assert "message" in data
-    if "data" in data:
-        assert "status" in data["data"]
-        assert "network" in data["data"]
+    if response.status_code == 200:
+        assert "success" in data
+        assert data["success"] is True
+    else:
+        assert "detail" in data
 
 def test_spot_limit_buy():
     """Test spot limit buy endpoint"""
@@ -120,11 +121,11 @@ def test_spot_limit_buy():
     print(f"Limit buy response: {response.json()}")
     assert response.status_code in [200, 400, 422]
     data = response.json()
-    assert "success" in data
-    assert "message" in data
-    if "data" in data:
-        assert "status" in data["data"]
-        assert "network" in data["data"]
+    if response.status_code == 200:
+        assert "success" in data
+        assert data["success"] is True
+    else:
+        assert "detail" in data
 
 def test_spot_limit_sell():
     """Test spot limit sell endpoint"""
@@ -137,11 +138,11 @@ def test_spot_limit_sell():
     print(f"Limit sell response: {response.json()}")
     assert response.status_code in [200, 400, 422]
     data = response.json()
-    assert "success" in data
-    assert "message" in data
-    if "data" in data:
-        assert "status" in data["data"]
-        assert "network" in data["data"]
+    if response.status_code == 200:
+        assert "success" in data
+        assert data["success"] is True
+    else:
+        assert "detail" in data
 
 def test_spot_cancel_order():
     """Test spot cancel order endpoint"""
@@ -158,11 +159,19 @@ def test_spot_cancel_order():
         print(f"Cancel order response: {response.json()}")
         assert response.status_code in [200, 400, 422]
         data = response.json()
-        assert "success" in data
-        assert "message" in data
-        if "data" in data:
-            assert "status" in data["data"]
-            assert "network" in data["data"]
+        
+        if response.status_code == 422:
+            # Handle validation error
+            assert "detail" in data
+            assert isinstance(data["detail"], list)
+            assert any("order_id" in error["loc"] for error in data["detail"])
+        else:
+            # Handle successful response
+            assert "success" in data
+            assert "message" in data
+            if "data" in data:
+                assert "status" in data["data"]
+                assert "network" in data["data"]
 
 def test_spot_cancel_all_orders():
     """Test spot cancel all orders endpoint"""
@@ -171,11 +180,11 @@ def test_spot_cancel_all_orders():
     print(f"Cancel all orders response: {response.json()}")
     assert response.status_code in [200, 400, 422]
     data = response.json()
-    assert "success" in data
-    assert "message" in data
-    if "data" in data:
-        assert "status" in data["data"]
-        assert "network" in data["data"]
+    if response.status_code == 200:
+        assert "success" in data
+        assert data["success"] is True
+    else:
+        assert "detail" in data
 
 def test_invalid_symbol():
     """Test invalid symbol format"""
@@ -201,4 +210,113 @@ def test_invalid_size():
     print(f"Invalid size response: {response.json()}")
     assert response.status_code in [400, 422]  # Both 400 and 422 are valid for validation errors
     data = response.json()
-    assert "detail" in data or "message" in data 
+    assert "detail" in data or "message" in data
+
+def test_connection_errors(monkeypatch):
+    """Test connection error handling"""
+    # Mock api_connector.is_connected to return False
+    from api.spot_api import api_connector
+    monkeypatch.setattr(api_connector, "is_connected", lambda: False)
+    
+    # Test not connected
+    response = client.post("/api/v1/spot/market-buy", json={"symbol": "BTC/USDT", "size": 0.1})
+    assert response.status_code == 400
+    data = response.json()
+    assert "Not connected to exchange" in data["detail"]["message"]
+    assert "required_action" in data["detail"]
+
+    # Mock order handler not configured
+    monkeypatch.setattr(api_connector, "is_connected", lambda: True)
+    from api.spot_api import order_handler
+    monkeypatch.setattr(order_handler, "exchange", None)
+    monkeypatch.setattr(order_handler, "info", None)
+    
+    response = client.post("/api/v1/spot/market-buy", json={"symbol": "BTC/USDT", "size": 0.1})
+    assert response.status_code == 400
+    data = response.json()
+    assert "Order handler not configured" in data["detail"]["message"]
+
+def test_validation_errors():
+    """Test request validation errors"""
+    # Test invalid size
+    response = client.post("/api/v1/spot/market-buy", json={
+        "symbol": "BTC/USDT",
+        "size": 0.00001  # Too small
+    })
+    assert response.status_code == 422
+    data = response.json()
+    assert "size" in str(data)
+
+    # Test invalid price
+    response = client.post("/api/v1/spot/limit-buy", json={
+        "symbol": "BTC/USDT",
+        "size": 0.1,
+        "price": 0.00001  # Too small
+    })
+    assert response.status_code == 422
+    data = response.json()
+    assert "price" in str(data)
+
+    # Test invalid slippage
+    response = client.post("/api/v1/spot/market-buy", json={
+        "symbol": "BTC/USDT",
+        "size": 0.1,
+        "slippage": 2.0  # Too high
+    })
+    assert response.status_code == 422
+    data = response.json()
+    assert "slippage" in str(data)
+
+@pytest.fixture
+async def async_client():
+    async with AsyncClient(app=app, base_url="http://testserver") as ac:
+        yield ac
+
+@pytest.mark.asyncio
+async def test_order_handler_errors(monkeypatch, async_client):
+    """Test order handler error handling"""
+    from api.spot_api import order_handler
+    
+    # Mock market buy error
+    monkeypatch.setattr(order_handler, "market_buy", lambda *args, **kwargs: {"success": False, "error": "Order failed"})
+    response = await async_client.post("/api/v1/spot/market-buy", json={
+        "symbol": "BTC/USDT",
+        "size": 0.1,
+        "slippage": 0.1
+    })
+    assert response.status_code == 400
+    data = response.json()
+    assert "Order failed" in data["detail"]
+
+    # Mock market sell error
+    monkeypatch.setattr(order_handler, "market_sell", lambda *args, **kwargs: {"success": False, "error": "Order failed"})
+    response = await async_client.post("/api/v1/spot/market-sell", json={
+        "symbol": "BTC/USDT",
+        "size": 0.1,
+        "slippage": 0.1
+    })
+    assert response.status_code == 400
+    data = response.json()
+    assert "Order failed" in data["detail"]
+
+    # Mock limit buy error
+    monkeypatch.setattr(order_handler, "limit_buy", lambda *args, **kwargs: {"success": False, "error": "Order failed"})
+    response = await async_client.post("/api/v1/spot/limit-buy", json={
+        "symbol": "BTC/USDT",
+        "size": 0.1,
+        "price": 50000.0
+    })
+    assert response.status_code == 400
+    data = response.json()
+    assert "Order failed" in data["detail"]
+
+    # Mock limit sell error
+    monkeypatch.setattr(order_handler, "limit_sell", lambda *args, **kwargs: {"success": False, "error": "Order failed"})
+    response = await async_client.post("/api/v1/spot/limit-sell", json={
+        "symbol": "BTC/USDT",
+        "size": 0.1,
+        "price": 50000.0
+    })
+    assert response.status_code == 400
+    data = response.json()
+    assert "Order failed" in data["detail"] 

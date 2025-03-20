@@ -19,7 +19,7 @@ class ApiConnector:
         self.info: Optional[Info] = None
         self._is_testnet: bool = False  # Track which network we're connected to
         
-    def connect_testnet(self) -> bool:
+    async def connect_testnet(self) -> bool:
         """
         Connect to Hyperliquid testnet
         
@@ -27,6 +27,9 @@ class ApiConnector:
             True if connected successfully, False otherwise
         """
         try:
+            # Reset any existing connection
+            self.exchange = None
+            self.info = None
             self._is_testnet = True
             api_url = TESTNET_API_URL
             
@@ -37,13 +40,20 @@ class ApiConnector:
             )
             self.info = Info(api_url)
             
+            # Test connection
+            await self.info.user_state("0x0")
+            
             self.logger.info("Successfully connected to Hyperliquid testnet")
             return True
         except Exception as e:
             self.logger.error(f"Error connecting to Hyperliquid testnet: {str(e)}")
+            # Clean up on failure
+            self.exchange = None
+            self.info = None
+            self._is_testnet = False
             return False
 
-    def connect(self, credentials: Dict[str, str]) -> bool:
+    async def connect(self, credentials: Dict[str, str]) -> bool:
         """
         Connect to Hyperliquid mainnet
         
@@ -55,7 +65,7 @@ class ApiConnector:
         """
         try:
             self._is_testnet = False
-            return self.connect_hyperliquid(
+            return await self.connect_hyperliquid(
                 wallet_address=credentials["wallet_address"],
                 secret_key=credentials["secret_key"],
                 use_testnet=False
@@ -64,7 +74,7 @@ class ApiConnector:
             self.logger.error(f"Error connecting to Hyperliquid mainnet: {str(e)}")
             return False
 
-    def connect_hyperliquid(self, wallet_address: str, secret_key: str, 
+    async def connect_hyperliquid(self, wallet_address: str, secret_key: str, 
                            use_testnet: bool = False) -> bool:
         """
         Connect to Hyperliquid exchange
@@ -82,9 +92,8 @@ class ApiConnector:
             self.wallet = None
             self.exchange = None
             self.info = None
-            
-            self.wallet_address = wallet_address
             self._is_testnet = use_testnet  # Store the network type
+            self.wallet_address = wallet_address
             api_url = TESTNET_API_URL if use_testnet else MAINNET_API_URL
             
             # Initialize wallet
@@ -94,6 +103,7 @@ class ApiConnector:
                     raise ValueError("Failed to initialize wallet")
             except Exception as e:
                 self.logger.error(f"Error initializing wallet: {str(e)}")
+                self._cleanup()
                 return False
             
             # Initialize exchange and info
@@ -109,15 +119,17 @@ class ApiConnector:
                     raise ValueError("Failed to initialize exchange or info")
             except Exception as e:
                 self.logger.error(f"Error initializing exchange: {str(e)}")
+                self._cleanup()
                 return False
             
             # Test connection by getting balances
             try:
-                user_state = self.info.user_state(self.wallet_address)
+                user_state = await self.info.user_state(self.wallet_address)
                 if not user_state:
                     raise ValueError("Failed to get user state")
             except Exception as e:
                 self.logger.error(f"Error testing connection: {str(e)}")
+                self._cleanup()
                 return False
             
             self.logger.info(f"Successfully connected to Hyperliquid {'(testnet)' if use_testnet else ''}")
@@ -125,12 +137,17 @@ class ApiConnector:
             
         except Exception as e:
             self.logger.error(f"Error connecting to Hyperliquid: {str(e)}")
-            # Clean up on failure
-            self.wallet = None
-            self.exchange = None
-            self.info = None
+            self._cleanup()
             return False
-    
+            
+    def _cleanup(self):
+        """Clean up connection state"""
+        self.wallet = None
+        self.exchange = None
+        self.info = None
+        self._is_testnet = False
+        self.wallet_address = None
+
     def is_testnet(self) -> bool:
         """
         Check if currently connected to testnet
@@ -149,7 +166,7 @@ class ApiConnector:
         """
         return self.exchange is not None and self.info is not None
     
-    def get_balances(self) -> Dict[str, Any]:
+    async def get_balances(self) -> Dict[str, Any]:
         """Get all balances (spot and perpetual)"""
         if not self.info or not self.wallet_address:
             self.logger.error("Not connected to exchange")
@@ -166,7 +183,7 @@ class ApiConnector:
             # Get spot balances
             spot_balances = []
             try:
-                spot_state = self.info.spot_user_state(self.wallet_address)
+                spot_state = await self.info.spot_user_state(self.wallet_address)
                 for balance in spot_state.get("balances", []):
                     spot_balances.append({
                         "asset": balance.get("coin", ""),
@@ -184,7 +201,7 @@ class ApiConnector:
                 "position_value": 0.0
             }
             try:
-                perp_state = self.info.user_state(self.wallet_address)
+                perp_state = await self.info.user_state(self.wallet_address)
                 if perp_state and isinstance(perp_state, dict):
                     margin_summary = perp_state.get("marginSummary", {})
                     if margin_summary and isinstance(margin_summary, dict):
@@ -215,14 +232,14 @@ class ApiConnector:
                 }
             }
     
-    def get_positions(self) -> List[Dict[str, Any]]:
+    async def get_positions(self) -> List[Dict[str, Any]]:
         """Get all open positions"""
         if not self.info or not self.wallet_address:
             self.logger.error("Not connected to exchange")
             return []
         
         try:
-            perp_state = self.info.user_state(self.wallet_address)
+            perp_state = await self.info.user_state(self.wallet_address)
             positions = []
             
             for asset_position in perp_state.get("assetPositions", []):

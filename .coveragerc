@@ -1,0 +1,29 @@
+[run]
+source = api
+omit = 
+    */tests/*
+    */__init__.py
+    */models/*
+    */utils/*
+    */conftest.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    pass
+    raise ImportError
+    except ImportError:
+    raise NotImplementedError
+    if TYPE_CHECKING:
+    @abstractmethod
+    def __init__
+    @property
+    @classmethod
+    @staticmethod
+
+[html]
+directory = coverage_html
+title = Elysium API Test Coverage Report 

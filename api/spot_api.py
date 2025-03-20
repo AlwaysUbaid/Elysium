@@ -190,6 +190,8 @@ async def market_buy(request: MarketOrderRequest):
             size=request.size,
             slippage=request.slippage
         )
+        if not result.get("success", False):
+            raise HTTPException(status_code=400, detail=result.get("error", "Order failed"))
         return OrderResponse(
             success=True,
             message=f"Market buy order executed successfully on {network}",
@@ -221,6 +223,8 @@ async def market_sell(request: MarketOrderRequest):
             size=request.size,
             slippage=request.slippage
         )
+        if not result.get("success", False):
+            raise HTTPException(status_code=400, detail=result.get("error", "Order failed"))
         return OrderResponse(
             success=True,
             message=f"Market sell order executed successfully on {network}",
@@ -252,6 +256,8 @@ async def limit_buy(request: LimitOrderRequest):
             size=request.size,
             price=request.price
         )
+        if not result.get("success", False):
+            raise HTTPException(status_code=400, detail=result.get("error", "Order failed"))
         return OrderResponse(
             success=True,
             message=f"Limit buy order placed successfully on {network}",
@@ -283,6 +289,8 @@ async def limit_sell(request: LimitOrderRequest):
             size=request.size,
             price=request.price
         )
+        if not result.get("success", False):
+            raise HTTPException(status_code=400, detail=result.get("error", "Order failed"))
         return OrderResponse(
             success=True,
             message=f"Limit sell order placed successfully on {network}",
@@ -312,6 +320,8 @@ async def cancel_order(request: CancelOrderRequest):
             symbol=request.symbol,
             order_id=request.order_id
         )
+        if not result.get("success", False):
+            raise HTTPException(status_code=400, detail=result.get("error", "Order failed"))
         return OrderResponse(
             success=True,
             message=f"Order cancelled successfully on {network}",
@@ -337,6 +347,8 @@ async def cancel_all_orders(request: CancelAllOrdersRequest):
         check_connection()
         network = "testnet" if api_connector.is_testnet() else "mainnet"
         result = order_handler.cancel_all_orders(symbol=request.symbol)
+        if not result.get("success", False):
+            raise HTTPException(status_code=400, detail=result.get("error", "Order failed"))
         return CancelAllOrdersResponse(
             success=True,
             message=f"All orders cancelled successfully on {network}",
