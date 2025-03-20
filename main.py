@@ -3,12 +3,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 import uvicorn
+import logging
+from datetime import datetime
 
 # Import core modules
 from core.config_manager import ConfigManager
 from core.utils import setup_logging
 from api.api_connector import ApiConnector
 from order_handler import OrderHandler
+from api.spot_api import router as spot_router, set_instances
+
+# Setup logging
+logger = setup_logging("INFO")
+logger.info("Initializing Elysium Trading Platform API components")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -31,22 +38,28 @@ config_manager = ConfigManager("elysium_config.json")
 api_connector = ApiConnector()
 order_handler = OrderHandler()
 
+# Set instances in spot API
+set_instances(api_connector, order_handler)
+
+# Include routers
+app.include_router(spot_router)
+
 # Request/Response Models
 class Credentials(BaseModel):
     wallet_address: str = Field(
         ...,
         description="Your Ethereum wallet address (e.g., 0x123...)",
-        example="0x1234567890abcdef1234567890abcdef12345678"
+        example="0x4f7116a3B69b14480b0C0890d63bd4B3d0984EE6"
     )
     secret_key: str = Field(
         ...,
         description="Your wallet's private key",
-        example="0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        example="0x992df5cae22a4b8e3844f73e14756f11a2662b7f2e792ce78fd85abb63150d51"
     )
 
 class ConnectionRequest(BaseModel):
     network: str = Field(
-        default="mainnet",
+        default="testnet",
         description="Network to connect to (mainnet or testnet)",
         example="mainnet"
     )
@@ -55,16 +68,11 @@ class ConnectionRequest(BaseModel):
         description="Wallet credentials (required for both mainnet and testnet)"
     )
 
-class OrderRequest(BaseModel):
-    symbol: str = Field(..., description="Trading pair symbol (e.g., BTC)")
-    side: str = Field(..., description="Order side (buy or sell)")
-    quantity: float = Field(..., description="Order quantity")
-    price: Optional[float] = Field(None, description="Order price (required for limit orders)")
-    order_type: str = Field(default="market", description="Order type (market or limit)")
-
-class ConfigUpdate(BaseModel):
-    key: str = Field(..., description="Configuration key to update")
-    value: Any = Field(..., description="New value for the configuration key")
+class ConnectionResponse(BaseModel):
+    status: str = Field(..., description="Connection status")
+    message: str = Field(..., description="Response message")
+    network: str = Field(..., description="Connected network (testnet/mainnet)")
+    timestamp: str = Field(..., description="Connection timestamp")
 
 class SpotBalance(BaseModel):
     asset: str = Field(..., description="Asset symbol (e.g., BTC)")
@@ -80,6 +88,21 @@ class PerpBalance(BaseModel):
 class BalancesResponse(BaseModel):
     spot: List[SpotBalance] = Field(..., description="List of spot balances")
     perp: PerpBalance = Field(..., description="Perpetual trading balances")
+
+class OpenOrder(BaseModel):
+    symbol: str = Field(..., description="Trading pair symbol (e.g., BTC)")
+    order_id: int = Field(..., description="Unique order ID")
+    side: str = Field(..., description="Order side (buy or sell)")
+    order_type: str = Field(..., description="Order type (market or limit)")
+    price: Optional[float] = Field(None, description="Order price (for limit orders)")
+    quantity: float = Field(..., description="Order quantity")
+    filled: float = Field(..., description="Amount already filled")
+    remaining: float = Field(..., description="Amount remaining to be filled")
+    status: str = Field(..., description="Order status (open, filled, cancelled, etc.)")
+    created_at: str = Field(..., description="Order creation timestamp")
+
+class OpenOrdersResponse(BaseModel):
+    orders: List[OpenOrder] = Field(..., description="List of open orders")
 
 # API Endpoints
 @app.get("/")
@@ -105,20 +128,16 @@ async def connect(request: ConnectionRequest):
         )
         
         if success:
+            # Set up the OrderHandler with the exchange and API connector
+            order_handler.set_exchange(
+                exchange=api_connector.exchange,
+                info=api_connector.info,
+                api_connector=api_connector
+            )
+            order_handler.wallet_address = request.credentials.wallet_address
+            
             return {"status": "success", "message": f"Connected to {request.network}"}
         raise HTTPException(status_code=400, detail="Connection failed")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/status", response_model=Dict[str, str])
-async def get_status():
-    """Check if connected to the exchange and which network is being used"""
-    try:
-        is_connected = api_connector.is_connected()
-        return {
-            "status": "connected" if is_connected else "disconnected",
-            "network": "testnet" if api_connector.is_testnet() else "mainnet"
-        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -151,62 +170,90 @@ async def get_balances():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/order", response_model=Dict[str, Any])
-async def place_order(order: OrderRequest):
-    """Place a new order on the exchange (market or limit)"""
+@app.get("/open-orders", response_model=OpenOrdersResponse)
+async def get_open_orders(symbol: Optional[str] = None):
+    """
+    Get all open orders, optionally filtered by symbol.
+    
+    Args:
+        symbol: Optional trading pair symbol to filter orders (e.g., "BTC")
+        
+    Returns:
+        List of open orders with their details
+    """
     try:
         if not api_connector.is_connected():
             raise HTTPException(status_code=400, detail="Not connected to exchange")
         
-        result = order_handler.place_order(
-            symbol=order.symbol,
-            side=order.side,
-            quantity=order.quantity,
-            price=order.price,
-            order_type=order.order_type
+        response = order_handler.get_open_orders(symbol)
+        
+        # Check if the response is an error
+        if isinstance(response, dict) and response.get("status") == "error":
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error fetching orders: {response.get('message', 'Unknown error')}"
+            )
+        
+        # Extract orders from the response
+        orders = []
+        if isinstance(response, dict):
+            # Handle the case where orders are in a specific key
+            if "orders" in response:
+                orders = response["orders"]
+            elif "data" in response and "orders" in response["data"]:
+                orders = response["data"]["orders"]
+            else:
+                # If the response is a single order, wrap it in a list
+                orders = [response] if response else []
+        
+        # Convert the orders to our Pydantic model format with safe access
+        formatted_orders = []
+        for order in orders:
+            try:
+                # Ensure order is a dictionary
+                if not isinstance(order, dict):
+                    continue
+                    
+                formatted_order = OpenOrder(
+                    symbol=str(order.get("symbol", "")),
+                    order_id=int(order.get("order_id", 0)),
+                    side=str(order.get("side", "")),
+                    order_type=str(order.get("order_type", "")),
+                    price=float(order.get("price")) if order.get("price") is not None else None,
+                    quantity=float(order.get("quantity", 0)),
+                    filled=float(order.get("filled", 0)),
+                    remaining=float(order.get("remaining", 0)),
+                    status=str(order.get("status", "")),
+                    created_at=str(order.get("created_at", ""))
+                )
+                formatted_orders.append(formatted_order)
+            except (ValueError, TypeError) as e:
+                # Log the error but continue processing other orders
+                logger.error(f"Error formatting order: {e}")
+                continue
+        
+        return OpenOrdersResponse(orders=formatted_orders)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching open orders: {str(e)}"
         )
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/positions", response_model=List[Dict[str, Any]])
-async def get_positions():
-    """Get all currently open trading positions"""
-    try:
-        if not api_connector.is_connected():
-            raise HTTPException(status_code=400, detail="Not connected to exchange")
-        return api_connector.get_positions()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/balance", response_model=Dict[str, Any])
-async def get_balance():
-    """Get the current account balance"""
-    try:
-        if not api_connector.is_connected():
-            raise HTTPException(status_code=400, detail="Not connected to exchange")
-        return api_connector.get_balance()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/config", response_model=Dict[str, Any])
-async def get_config():
-    """Get all current configuration settings"""
-    try:
-        return config_manager.get_all()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/config", response_model=Dict[str, str])
-async def update_config(config_update: ConfigUpdate):
-    """Update a specific configuration setting"""
-    try:
-        config_manager.set(config_update.key, config_update.value)
-        return {"status": "success", "message": f"Updated config: {config_update.key}"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    logger = setup_logging("INFO")
-    logger.info("Starting Elysium Trading Platform API")
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True) 
+    try:
+        logger.info("Starting Elysium Trading Platform API")
+        logger.info("Server will be available at http://0.0.0.0:8000")
+        logger.info("API documentation available at http://0.0.0.0:8000/docs")
+        
+        # Run the server with more stable settings
+        uvicorn.run(
+            "main:app",
+            host="0.0.0.0",
+            port=8000,
+            reload=False,  # Disable auto-reload for stability
+            log_level="info",
+            workers=1  # Use single worker for stability
+        )
+    except Exception as e:
+        logger.error(f"Server crashed: {str(e)}")
+        raise 
