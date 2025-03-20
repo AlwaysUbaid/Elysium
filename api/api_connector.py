@@ -78,28 +78,57 @@ class ApiConnector:
             True if connected successfully, False otherwise
         """
         try:
+            # Reset any existing connection
+            self.wallet = None
+            self.exchange = None
+            self.info = None
+            
             self.wallet_address = wallet_address
             self._is_testnet = use_testnet  # Store the network type
             api_url = TESTNET_API_URL if use_testnet else MAINNET_API_URL
             
             # Initialize wallet
-            self.wallet = eth_account.Account.from_key(secret_key)
+            try:
+                self.wallet = eth_account.Account.from_key(secret_key)
+                if not self.wallet:
+                    raise ValueError("Failed to initialize wallet")
+            except Exception as e:
+                self.logger.error(f"Error initializing wallet: {str(e)}")
+                return False
             
             # Initialize exchange and info
-            self.exchange = Exchange(
-                self.wallet,
-                api_url,
-                account_address=self.wallet_address
-            )
-            self.info = Info(api_url)
+            try:
+                self.exchange = Exchange(
+                    self.wallet,
+                    api_url,
+                    account_address=self.wallet_address
+                )
+                self.info = Info(api_url)
+                
+                if not self.exchange or not self.info:
+                    raise ValueError("Failed to initialize exchange or info")
+            except Exception as e:
+                self.logger.error(f"Error initializing exchange: {str(e)}")
+                return False
             
             # Test connection by getting balances
-            user_state = self.info.user_state(self.wallet_address)
+            try:
+                user_state = self.info.user_state(self.wallet_address)
+                if not user_state:
+                    raise ValueError("Failed to get user state")
+            except Exception as e:
+                self.logger.error(f"Error testing connection: {str(e)}")
+                return False
             
             self.logger.info(f"Successfully connected to Hyperliquid {'(testnet)' if use_testnet else ''}")
             return True
+            
         except Exception as e:
             self.logger.error(f"Error connecting to Hyperliquid: {str(e)}")
+            # Clean up on failure
+            self.wallet = None
+            self.exchange = None
+            self.info = None
             return False
     
     def is_testnet(self) -> bool:
