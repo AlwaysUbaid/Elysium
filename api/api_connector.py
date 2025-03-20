@@ -17,7 +17,53 @@ class ApiConnector:
         self.wallet_address: Optional[str] = None
         self.exchange: Optional[Exchange] = None
         self.info: Optional[Info] = None
+        self._is_testnet: bool = False  # Track which network we're connected to
         
+    def connect_testnet(self) -> bool:
+        """
+        Connect to Hyperliquid testnet
+        
+        Returns:
+            True if connected successfully, False otherwise
+        """
+        try:
+            self._is_testnet = True
+            api_url = TESTNET_API_URL
+            
+            # Initialize exchange and info for testnet
+            self.exchange = Exchange(
+                None,  # No wallet needed for testnet
+                api_url
+            )
+            self.info = Info(api_url)
+            
+            self.logger.info("Successfully connected to Hyperliquid testnet")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error connecting to Hyperliquid testnet: {str(e)}")
+            return False
+
+    def connect(self, credentials: Dict[str, str]) -> bool:
+        """
+        Connect to Hyperliquid mainnet
+        
+        Args:
+            credentials: Dictionary containing wallet_address and secret_key
+            
+        Returns:
+            True if connected successfully, False otherwise
+        """
+        try:
+            self._is_testnet = False
+            return self.connect_hyperliquid(
+                wallet_address=credentials["wallet_address"],
+                secret_key=credentials["secret_key"],
+                use_testnet=False
+            )
+        except Exception as e:
+            self.logger.error(f"Error connecting to Hyperliquid mainnet: {str(e)}")
+            return False
+
     def connect_hyperliquid(self, wallet_address: str, secret_key: str, 
                            use_testnet: bool = False) -> bool:
         """
@@ -33,6 +79,7 @@ class ApiConnector:
         """
         try:
             self.wallet_address = wallet_address
+            self._is_testnet = use_testnet  # Store the network type
             api_url = TESTNET_API_URL if use_testnet else MAINNET_API_URL
             
             # Initialize wallet
@@ -55,41 +102,89 @@ class ApiConnector:
             self.logger.error(f"Error connecting to Hyperliquid: {str(e)}")
             return False
     
+    def is_testnet(self) -> bool:
+        """
+        Check if currently connected to testnet
+        
+        Returns:
+            bool: True if connected to testnet, False if connected to mainnet
+        """
+        return self._is_testnet
+
+    def is_connected(self) -> bool:
+        """
+        Check if currently connected to any network
+        
+        Returns:
+            bool: True if connected, False otherwise
+        """
+        return self.exchange is not None and self.info is not None
+    
     def get_balances(self) -> Dict[str, Any]:
         """Get all balances (spot and perpetual)"""
         if not self.info or not self.wallet_address:
             self.logger.error("Not connected to exchange")
-            return {"spot": [], "perp": {}}
+            return {
+                "spot": [],
+                "perp": {
+                    "account_value": 0.0,
+                    "margin_used": 0.0,
+                    "position_value": 0.0
+                }
+            }
         
         try:
-            spot_state = self.info.spot_user_state(self.wallet_address)
-            perp_state = self.info.user_state(self.wallet_address)
-            
-            # Format spot balances
+            # Get spot balances
             spot_balances = []
-            for balance in spot_state.get("balances", []):
-                spot_balances.append({
-                    "asset": balance.get("coin", ""),
-                    "available": float(balance.get("available", 0)),
-                    "total": float(balance.get("total", 0)),
-                    "in_orders": float(balance.get("total", 0)) - float(balance.get("available", 0))
-                })
+            try:
+                spot_state = self.info.spot_user_state(self.wallet_address)
+                for balance in spot_state.get("balances", []):
+                    spot_balances.append({
+                        "asset": balance.get("coin", ""),
+                        "available": float(balance.get("available", 0)),
+                        "total": float(balance.get("total", 0)),
+                        "in_orders": float(balance.get("total", 0)) - float(balance.get("available", 0))
+                    })
+            except Exception as e:
+                self.logger.error(f"Error fetching spot balances: {str(e)}")
             
-            # Format perpetual balances
-            margin_summary = perp_state.get("marginSummary", {})
+            # Get perpetual balances
             perp_balances = {
-                "account_value": float(margin_summary.get("accountValue", 0)),
-                "margin_used": float(margin_summary.get("totalMarginUsed", 0)),
-                "position_value": float(margin_summary.get("totalNtlPos", 0))
+                "account_value": 0.0,
+                "margin_used": 0.0,
+                "position_value": 0.0
             }
+            try:
+                perp_state = self.info.user_state(self.wallet_address)
+                if perp_state and isinstance(perp_state, dict):
+                    margin_summary = perp_state.get("marginSummary", {})
+                    if margin_summary and isinstance(margin_summary, dict):
+                        perp_balances = {
+                            "account_value": float(margin_summary.get("accountValue", 0)),
+                            "margin_used": float(margin_summary.get("totalMarginUsed", 0)),
+                            "position_value": float(margin_summary.get("totalNtlPos", 0))
+                        }
+            except Exception as e:
+                self.logger.error(f"Error fetching perpetual balances: {str(e)}")
+            
+            # Log the response for debugging
+            self.logger.debug(f"Spot balances: {spot_balances}")
+            self.logger.debug(f"Perp balances: {perp_balances}")
             
             return {
                 "spot": spot_balances,
                 "perp": perp_balances
             }
         except Exception as e:
-            self.logger.error(f"Error fetching balances: {str(e)}")
-            return {"spot": [], "perp": {}}
+            self.logger.error(f"Error in get_balances: {str(e)}")
+            return {
+                "spot": [],
+                "perp": {
+                    "account_value": 0.0,
+                    "margin_used": 0.0,
+                    "position_value": 0.0
+                }
+            }
     
     def get_positions(self) -> List[Dict[str, Any]]:
         """Get all open positions"""
