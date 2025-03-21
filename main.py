@@ -13,6 +13,7 @@ from api.api_connector import ApiConnector
 from order_handler import OrderHandler
 from api.spot_api import router as spot_router, set_instances as set_spot_instances
 from api.perp_api import router as perp_router, set_instances as set_perp_instances
+from api.scaled_api import router as scaled_router, set_instances as set_scaled_instances
 
 # Setup logging
 logger = setup_logging("INFO")
@@ -39,13 +40,15 @@ config_manager = ConfigManager("elysium_config.json")
 api_connector = ApiConnector()
 order_handler = OrderHandler()
 
-# Set instances in spot and perp APIs
+# Set instances in spot, perp, and scaled APIs
 set_spot_instances(api_connector, order_handler)
 set_perp_instances(api_connector, order_handler)
+set_scaled_instances(api_connector, order_handler)
 
 # Include routers
 app.include_router(spot_router)
 app.include_router(perp_router)
+app.include_router(scaled_router)
 
 # Request/Response Models
 class Credentials(BaseModel):
