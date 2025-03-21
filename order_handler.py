@@ -46,6 +46,55 @@ class OrderHandler:
         except Exception as e:
             self.logger.error(f"Error in market buy: {str(e)}")
             return {"status": "error", "message": str(e)}
+        
+    def _format_and_truncate(self, symbol: str, size: float, is_size: bool = True) -> str:
+        """
+        Format and truncate a number to a string with proper precision for the hyperliquid API
+        to avoid float_to_wire rounding errors
+        
+        Args:
+            symbol: Trading pair symbol
+            size: The size or price value
+            is_size: Whether this is a size (True) or price (False)
+            
+        Returns:
+            String representation with proper precision
+        """
+        try:
+            # Get the metadata for the symbol
+            meta = self.info.meta()
+            
+            # Default precision values
+            decimals = 8 if is_size else 6
+            
+            # Find the symbol's info and get specific precision
+            for asset_info in meta["universe"]:
+                if asset_info["name"] == symbol:
+                    if is_size:
+                        decimals = asset_info.get("szDecimals", 8)
+                    else:
+                        # For price, check if spot or perp
+                        coin = self.info.name_to_coin.get(symbol, symbol)
+                        if coin:
+                            asset_idx = self.info.coin_to_asset.get(coin)
+                            if asset_idx is not None:
+                                is_spot = asset_idx >= 10_000
+                                decimals = 8 if is_spot else 6
+                    break
+            
+            # Format the number as string with proper precision, truncating any excess digits
+            formatted = "{:.{}f}".format(size, decimals)
+            
+            # Remove trailing zeros but keep at least one decimal place
+            if '.' in formatted:
+                formatted = formatted.rstrip('0').rstrip('.') + ('0' if formatted.endswith('.0') else '')
+            
+            self.logger.debug(f"Formatted {'size' if is_size else 'price'}: {size} -> {formatted}")
+            return formatted
+            
+        except Exception as e:
+            self.logger.warning(f"Error formatting value: {str(e)}. Using string conversion.")
+            return str(size)
             
     def market_sell(self, symbol: str, size: float, slippage: float = 0.05) -> Dict[str, Any]:
         """
@@ -80,7 +129,7 @@ class OrderHandler:
     
     def limit_buy(self, symbol: str, size: float, price: float) -> Dict[str, Any]:
         """
-        Place a limit buy order
+        Place a limit buy order with proper string formatting to avoid float_to_wire errors
         
         Args:
             symbol: Trading pair symbol
@@ -94,8 +143,17 @@ class OrderHandler:
             return {"status": "error", "message": "Not connected to exchange"}
             
         try:
-            self.logger.info(f"Placing limit buy: {size} {symbol} @ {price}")
-            result = self.exchange.order(symbol, True, size, price, {"limit": {"tif": "Gtc"}})
+            # Format size and price as strings to avoid float_to_wire errors
+            size_str = self._format_and_truncate(symbol, size, is_size=True)
+            price_str = self._format_and_truncate(symbol, price, is_size=False)
+            
+            self.logger.info(f"Placing limit buy: {size_str} {symbol} @ {price_str}")
+            
+            # Convert back to float for the API call but with the properly formatted precision
+            size_float = float(size_str)
+            price_float = float(price_str)
+            
+            result = self.exchange.order(symbol, True, size_float, price_float, {"limit": {"tif": "Gtc"}})
             
             if result["status"] == "ok":
                 status = result["response"]["data"]["statuses"][0]
@@ -187,7 +245,7 @@ class OrderHandler:
         
     def _format_size(self, symbol: str, size: float) -> float:
         """
-        Format the order size according to exchange requirements
+        Format the order size according to exchange requirements with precise handling
         
         Args:
             symbol: Trading pair symbol
@@ -209,11 +267,17 @@ class OrderHandler:
                 
             if symbol_info:
                 # Format size based on symbol's decimal places
-                sz_decimals = symbol_info.get("szDecimals", 2)
-                return round(size, sz_decimals)
+                sz_decimals = symbol_info.get("szDecimals", 8)  # Increase default decimals from 2 to 8
+                
+                # Convert to string with proper precision and back to float to avoid float representation issues
+                size_str = f"{{:.{sz_decimals}f}}".format(size)
+                self.logger.debug(f"Formatting size: {size} -> {size_str}")
+                return float(size_str)
             
-            # Default to 2 decimal places if symbol info not found
-            return round(size, 2)
+            # Default to 8 decimal places if symbol info not found
+            size_str = f"{size:.8f}"
+            self.logger.debug(f"Formatting size (default): {size} -> {size_str}")
+            return float(size_str)
             
         except Exception as e:
             self.logger.warning(f"Error formatting size: {str(e)}. Using original size.")
@@ -221,7 +285,7 @@ class OrderHandler:
         
     def _format_price(self, symbol: str, price: float) -> float:
         """
-        Format the price according to exchange requirements
+        Format the price according to exchange requirements with precise handling
         
         Args:
             symbol: Trading pair symbol
@@ -233,23 +297,24 @@ class OrderHandler:
         try:
             # Special handling for very large prices to avoid precision errors
             if price > 100_000:
-                return round(price)
+                price_str = f"{price:.0f}"
+                self.logger.debug(f"Formatting large price: {price} -> {price_str}")
+                return float(price_str)
                 
-            # First round to 5 significant figures
-            price_str = f"{price:.5g}"
-            price_float = float(price_str)
-            
-            # Then apply additional rounding based on coin type
+            # Get precision based on symbol
             coin = self.info.name_to_coin.get(symbol, symbol)
+            max_decimals = 6  # Default
+            
             if coin:
                 asset_idx = self.info.coin_to_asset.get(coin)
                 if asset_idx is not None:
                     is_spot = asset_idx >= 10_000
                     max_decimals = 8 if is_spot else 6
-                    return round(price_float, max_decimals)
-                
-            # Default to 6 decimal places if we can't determine
-            return round(price_float, 6)
+            
+            # Format to string with proper precision and back to float
+            price_str = f"{{:.{max_decimals}f}}".format(price)
+            self.logger.debug(f"Formatting price: {price} -> {price_str}")
+            return float(price_str)
             
         except Exception as e:
             self.logger.warning(f"Error formatting price: {str(e)}. Using original price.")
@@ -349,9 +414,15 @@ class OrderHandler:
             order_sizes = self._calculate_order_distribution(total_size, num_orders, skew)
             price_levels = self._calculate_price_levels(is_buy, num_orders, start_price, end_price)
             
-            # Format sizes and prices to correct precision
-            formatted_sizes = [self._format_size(symbol, s) for s in order_sizes]
-            formatted_prices = [self._format_price(symbol, p) for p in price_levels]
+            # Format sizes and prices to avoid float_to_wire errors
+            formatted_sizes = []
+            formatted_prices = []
+
+            for i in range(num_orders):
+                size_str = self._format_and_truncate(symbol, order_sizes[i], is_size=True)
+                price_str = self._format_and_truncate(symbol, price_levels[i], is_size=False)
+                formatted_sizes.append(float(size_str))
+                formatted_prices.append(float(price_str))
             
             # Place orders
             self.logger.info(f"Placing {num_orders} {'buy' if is_buy else 'sell'} orders for {symbol} from {start_price} to {end_price} with total size {total_size}")
@@ -538,13 +609,13 @@ class OrderHandler:
         
     def perp_limit_buy(self, symbol: str, size: float, price: float, leverage: int = 1) -> Dict[str, Any]:
         """
-        Place a perpetual limit buy order
+        Place a perpetual limit buy order with proper string formatting to avoid float_to_wire errors
         
         Args:
-            symbol: Trading pair symbol (e.g., "BTC" or "ETH")
+            symbol: Trading pair symbol
             size: Contract size
             price: Limit price
-            leverage: Leverage multiplier (default 1x)
+            leverage: Leverage multiplier
             
         Returns:
             Order response dictionary
@@ -556,8 +627,17 @@ class OrderHandler:
             # Set leverage first
             self._set_leverage(symbol, leverage)
             
-            self.logger.info(f"Placing perp limit buy: {size} {symbol} @ {price} with {leverage}x leverage")
-            result = self.exchange.order(symbol, True, size, price, {"limit": {"tif": "Gtc"}})
+            # Format size and price as strings to avoid float_to_wire errors
+            size_str = self._format_and_truncate(symbol, size, is_size=True)
+            price_str = self._format_and_truncate(symbol, price, is_size=False)
+            
+            self.logger.info(f"Placing perp limit buy: {size_str} {symbol} @ {price_str} with {leverage}x leverage")
+            
+            # Convert back to float for the API call but with the properly formatted precision
+            size_float = float(size_str)
+            price_float = float(price_str)
+            
+            result = self.exchange.order(symbol, True, size_float, price_float, {"limit": {"tif": "Gtc"}})
             
             if result["status"] == "ok":
                 status = result["response"]["data"]["statuses"][0]
@@ -569,15 +649,16 @@ class OrderHandler:
             self.logger.error(f"Error in perp limit buy: {str(e)}")
             return {"status": "error", "message": str(e)}
         
+    
     def perp_limit_sell(self, symbol: str, size: float, price: float, leverage: int = 1) -> Dict[str, Any]:
         """
-        Place a perpetual limit sell order
+        Place a perpetual limit sell order with proper string formatting to avoid float_to_wire errors
         
         Args:
-            symbol: Trading pair symbol (e.g., "BTC" or "ETH")
+            symbol: Trading pair symbol
             size: Contract size
             price: Limit price
-            leverage: Leverage multiplier (default 1x)
+            leverage: Leverage multiplier
             
         Returns:
             Order response dictionary
@@ -589,8 +670,17 @@ class OrderHandler:
             # Set leverage first
             self._set_leverage(symbol, leverage)
             
-            self.logger.info(f"Placing perp limit sell: {size} {symbol} @ {price} with {leverage}x leverage")
-            result = self.exchange.order(symbol, False, size, price, {"limit": {"tif": "Gtc"}})
+            # Format size and price as strings to avoid float_to_wire errors
+            size_str = self._format_and_truncate(symbol, size, is_size=True)
+            price_str = self._format_and_truncate(symbol, price, is_size=False)
+            
+            self.logger.info(f"Placing perp limit sell: {size_str} {symbol} @ {price_str} with {leverage}x leverage")
+            
+            # Convert back to float for the API call but with the properly formatted precision
+            size_float = float(size_str)
+            price_float = float(price_str)
+            
+            result = self.exchange.order(symbol, False, size_float, price_float, {"limit": {"tif": "Gtc"}})
             
             if result["status"] == "ok":
                 status = result["response"]["data"]["statuses"][0]
@@ -600,6 +690,44 @@ class OrderHandler:
             return result
         except Exception as e:
             self.logger.error(f"Error in perp limit sell: {str(e)}")
+            return {"status": "error", "message": str(e)}
+        
+    def limit_sell(self, symbol: str, size: float, price: float) -> Dict[str, Any]:
+        """
+        Place a limit sell order with proper string formatting to avoid float_to_wire errors
+        
+        Args:
+            symbol: Trading pair symbol
+            size: Order size
+            price: Limit price
+            
+        Returns:
+            Order response dictionary
+        """
+        if not self.exchange:
+            return {"status": "error", "message": "Not connected to exchange"}
+            
+        try:
+            # Format size and price as strings to avoid float_to_wire errors
+            size_str = self._format_and_truncate(symbol, size, is_size=True)
+            price_str = self._format_and_truncate(symbol, price, is_size=False)
+            
+            self.logger.info(f"Placing limit sell: {size_str} {symbol} @ {price_str}")
+            
+            # Convert back to float for the API call but with the properly formatted precision
+            size_float = float(size_str)
+            price_float = float(price_str)
+            
+            result = self.exchange.order(symbol, False, size_float, price_float, {"limit": {"tif": "Gtc"}})
+            
+            if result["status"] == "ok":
+                status = result["response"]["data"]["statuses"][0]
+                if "resting" in status:
+                    oid = status["resting"]["oid"]
+                    self.logger.info(f"Limit sell placed: order ID {oid}")
+            return result
+        except Exception as e:
+            self.logger.error(f"Error in limit sell: {str(e)}")
             return {"status": "error", "message": str(e)}
 
     def close_position(self, symbol: str, slippage: float = 0.05) -> Dict[str, Any]:
